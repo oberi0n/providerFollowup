@@ -71,6 +71,10 @@ Réponse OCR :
 
 Le backend persiste notamment : `id`, `supplierId`, `invoiceNumber`, `invoiceDate`, `amountHt`, `vatAmount`, `amountTtc`, `currency`, `category`, `status`, `comment`, `fileObjectKey`, `originalFilename`, `ocrRawText`, `ocrSuggestionsJson`, `ocrProcessedAt`, `createdAt`, `updatedAt`.
 
-## Seed data
+## Données initiales
 
-Le fichier `backend/src/main/resources/import.sql` crée plusieurs factures exemples pour alimenter le tableau de bord : budget annuel, consommé, engagé non payé, reste disponible, statuts, dépenses par mois, fournisseur et catégorie.
+Aucune facture de test n’est créée par défaut. Le fichier `backend/src/main/resources/import.sql` est volontairement vide afin que l’application démarre avec une liste de factures vierge. Le dashboard se remplit uniquement avec les factures saisies ou importées via OCR.
+
+## Année budgétaire
+
+Le dashboard permet de choisir une année budgétaire et un budget annuel. L’API `GET /api/dashboard?year=YYYY&budget=120000` filtre les factures par date de facture sur l’année choisie, puis calcule consommé, reste disponible et ventilations mensuelles/fournisseur/catégorie.
