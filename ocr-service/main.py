@@ -20,7 +20,7 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "invoices")
 TESSERACT_LANGS = os.getenv("TESSERACT_LANGS", "fra+eng")
-TESSERACT_CONFIG = "--oem 3 --psm 6 -c preserve_interword_spaces=1"
+TESSERACT_CONFIG = "--oem 3 --psm 4 -c preserve_interword_spaces=1"
 
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=MINIO_SECURE)
 
@@ -70,10 +70,13 @@ def extract_text(data: bytes, filename: str, content_type: str) -> str:
         texts = []
         for image in images:
             prepared = prepare_image(image)
-            page_text = pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config=TESSERACT_CONFIG)
-            if len(page_text.strip()) < 25:
-                page_text = pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config="--oem 3 --psm 11")
-            texts.append(page_text)
+            text_candidates = [
+                pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config=TESSERACT_CONFIG),
+                pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config="--oem 3 --psm 6 -c preserve_interword_spaces=1"),
+            ]
+            if max(len(candidate.strip()) for candidate in text_candidates) < 25:
+                text_candidates.append(pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config="--oem 3 --psm 11"))
+            texts.append(max(text_candidates, key=lambda candidate: (len(extract_labeled_lines(candidate)), len(candidate))))
         return "\n\n".join(texts)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"OCR extraction failed: {exc}") from exc
@@ -117,41 +120,88 @@ def normalize_ocr_text(text: str) -> str:
     return re.sub(r"[ \t]+", " ", text)
 
 def find_supplier(lines: list[str]) -> Optional[str]:
-    stop_words = re.compile(r"facture|invoice|avoir|credit note|devis|quote|date|total|tva|vat|tax|montant|amount|client|bill to|ship to", re.I)
-    company_markers = re.compile(r"\b(sa|sas|sarl|eurl|gmbh|ltd|limited|inc|corp|llc|bv|ag|spa|srl)\b", re.I)
+    company_markers = re.compile(r"\b(sa|sas|sarl|eurl|gmbh|ltd|limited|inc|corp|llc|bv|ag|spa|srl|group|groupe)\b", re.I)
     candidates = []
-    for index, line in enumerate(lines[:18]):
+    for index, line in enumerate(lines[:20]):
         cleaned = clean_supplier_line(line)
-        if len(cleaned) < 3 or stop_words.search(cleaned) or re.fullmatch(r"[0-9\W]+", cleaned):
+        if not is_supplier_candidate(cleaned):
             continue
-        score = max(0, 30 - index)
+        score = 80 - (index * 4)
         if company_markers.search(cleaned):
-            score += 25
-        if re.search(r"[A-ZÀ-Ý]{2,}", cleaned):
-            score += 10
-        if re.search(r"\d{5}|rue|street|avenue|boulevard|phone|tel|email|www|@", cleaned, re.I):
-            score -= 15
+            score += 45
+        if index <= 4:
+            score += 20
+        if re.search(r"^[A-ZÀ-Ý0-9 &'.,-]{3,}$", cleaned):
+            score += 15
+        if re.search(r"\d", cleaned):
+            score -= 20
         candidates.append((score, cleaned))
-    if not candidates:
+    strong_candidates = [candidate for candidate in candidates if candidate[0] >= 60]
+    if not strong_candidates:
         return None
-    return sorted(candidates, key=lambda item: item[0], reverse=True)[0][1][:120]
+    return sorted(strong_candidates, key=lambda item: item[0], reverse=True)[0][1][:120]
+
+def is_supplier_candidate(value: str) -> bool:
+    if len(value) < 3 or len(value) > 120:
+        return False
+    noise = re.compile(
+        r"facture|invoice|avoir|credit note|devis|quote|receipt|reçu|date|due|échéance|total|tva|vat|tax|montant|amount|client|customer|bill to|ship to|sold to|fournisseur|supplier|vendeur|num(?:é|e)ro|number|iban|bic|siret|siren|r\.c\.s|rcs|capital|page",
+        re.I,
+    )
+    if noise.search(value):
+        return False
+    if re.fullmatch(r"[0-9\W]+", value):
+        return False
+    if re.search(r"@|www\.|https?://|\+?\d[\d .-]{7,}|\b\d{5}\b|rue|street|avenue|boulevard|road|phone|tel\b", value, re.I):
+        return False
+    return bool(re.search(r"[A-Za-zÀ-ÿ]{3,}", value))
+
+def extract_labeled_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if re.search(r"facture|invoice|inv\.?|num(?:é|e)ro|number|total|tva|vat", line, re.I)]
 
 def clean_supplier_line(line: str) -> str:
-    line = re.sub(r"^(from|supplier|vendeur|fournisseur)\s*[:\-]\s*", "", line.strip(), flags=re.I)
+    line = re.sub(r"^(from|supplier|vendeur|fournisseur|émetteur)\s*[:\-]\s*", "", line.strip(), flags=re.I)
     line = re.sub(r"\s{2,}", " ", line)
     return line.strip(" -,:;")
 
 def find_invoice_number(text: str) -> Optional[str]:
-    patterns = [
-        r"(?:facture|invoice|inv\.?|document)\s*(?:no|n[o°.]?|number|num(?:é|e)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_./\-]{2,})",
-        r"(?:no|n[o°.]?|number|num(?:é|e)ro|#)\s*(?:facture|invoice)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_./\-]{2,})",
-        r"\b(?:INV|FAC|FA|F|FACT)[\s\-_:]*([A-Z0-9][A-Z0-9./\-]{2,})\b",
-    ]
-    value = find_first(text, patterns)
-    if value:
-        return value.strip().strip(".,;:")
-    fallback = re.search(r"\b([A-Z]{2,5}[-_/]\d{3,}[-_/A-Z0-9]*)\b", text, re.I)
-    return fallback.group(1) if fallback else None
+    for line in text.splitlines():
+        if not re.search(r"facture|invoice|inv\.?|num(?:é|e)ro|number|no\b|n[o°.]|#", line, re.I):
+            continue
+        if re.search(r"date|due|échéance|total|amount|montant|tva|vat", line, re.I):
+            # A mixed line can still contain an invoice number before the date/amount; keep parsing but lower false positives by using strict patterns.
+            pass
+        for pattern in (
+            r"(?:facture|invoice|inv\.?|document)\s*(?:no|n[o°.]?|number|num(?:é|e)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_./\-]{2,})",
+            r"(?:no|n[o°.]?|number|num(?:é|e)ro|#)\s*(?:facture|invoice)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_./\-]{2,})",
+            r"\b((?:INV|FAC|FACT|FA)[\s\-_:]*[A-Z0-9][A-Z0-9./\-]{2,})\b",
+        ):
+            match = re.search(pattern, line, re.I)
+            if match:
+                value = clean_invoice_number(match.group(1))
+                if is_invoice_number_candidate(value):
+                    return value
+    fallback = re.search(r"\b((?:INV|FAC|FACT|FA)[-_./ ]?\d{3,}[-_/A-Z0-9]*)\b", text, re.I)
+    if fallback:
+        value = clean_invoice_number(fallback.group(1))
+        if is_invoice_number_candidate(value):
+            return value
+    return None
+
+def clean_invoice_number(value: str) -> str:
+    value = re.sub(r"^(no|n[o°.]?|number|num(?:é|e)ro|invoice|facture|inv\.?)\s*[:\-]?\s*", "", value.strip(), flags=re.I)
+    return value.strip().strip(".,;:").replace(" ", "-")
+
+def is_invoice_number_candidate(value: str) -> bool:
+    if not value or len(value) < 3 or len(value) > 40:
+        return False
+    if not re.search(r"\d", value):
+        return False
+    if re.fullmatch(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", value) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    if re.search(r"total|date|due|amount|montant|tva|vat", value, re.I):
+        return False
+    return bool(re.fullmatch(r"[A-Z0-9][A-Z0-9._/-]*", value, re.I))
 
 def detect_currency(text: str) -> str:
     if re.search(r"\$|\bUSD\b", text, re.I):

@@ -9,16 +9,26 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.InputStream;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 @ApplicationScoped
 public class MinioStorageService {
     @Inject MinioClient minioClient;
     @ConfigProperty(name = "minio.bucket") String bucket;
 
-    public String upload(Long invoiceId, String originalFilename, String contentType, InputStream inputStream, long size) throws Exception {
+    public String upload(LocalDate invoiceDate, String originalFilename, String contentType, InputStream inputStream, long size) throws Exception {
         ensureBucket();
         String safeName = originalFilename == null ? "invoice-file" : originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_");
-        String objectKey = "invoices/" + invoiceId + "/" + System.currentTimeMillis() + "-" + safeName;
+        YearMonth storageMonth = invoiceDate == null ? YearMonth.now() : YearMonth.from(invoiceDate);
+        String objectKey = "invoices/"
+                + storageMonth.format(DateTimeFormatter.ofPattern("yyyy/MM"))
+                + "/"
+                + UUID.randomUUID()
+                + "-"
+                + safeName;
         minioClient.putObject(PutObjectArgs.builder()
                 .bucket(bucket)
                 .object(objectKey)

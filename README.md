@@ -28,7 +28,7 @@ Puis ouvrir :
 
 1. Créer une facture depuis l'écran principal.
 2. Uploader une image JPG/PNG ou un PDF.
-3. Le backend stocke le fichier dans le bucket MinIO `invoices`.
+3. Le backend stocke le fichier dans le bucket MinIO `invoices`, sous `invoices/YYYY/MM/<uuid>-<nom-fichier>` selon la date de facture si elle est renseignée, sinon selon le mois courant.
 4. Le backend appelle le service interne `ocr-service` via `POST /ocr/extract`.
 5. Le service OCR lit le fichier depuis MinIO, convertit les PDF en images avec Poppler, puis lance Tesseract en français et anglais.
 6. Des regex simples proposent fournisseur, numéro, date, montants HT/TVA/TTC et devise.
@@ -78,3 +78,7 @@ Aucune facture de test n’est créée par défaut. Le fichier `backend/src/main
 ## Année budgétaire
 
 Le dashboard permet de choisir une année budgétaire et un budget annuel. L’API `GET /api/dashboard?year=YYYY&budget=120000` filtre les factures par date de facture sur l’année choisie, puis calcule consommé, reste disponible et ventilations mensuelles/fournisseur/catégorie.
+
+## Organisation MinIO
+
+Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque upload utilise une clé objet du type `invoices/YYYY/MM/<uuid>-<nom-fichier>`, ce qui regroupe les factures par année et mois tout en évitant les collisions de noms.

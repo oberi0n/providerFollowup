@@ -63,7 +63,7 @@ public class InvoiceResource {
         if (form == null || form.file == null) {
             throw new BadRequestException("Champ fichier 'file' manquant");
         }
-        String objectKey = storageService.upload(id, form.file.fileName(), form.file.contentType(), Files.newInputStream(form.file.uploadedFile()), form.file.size());
+        String objectKey = storageService.upload(invoice.invoiceDate, form.file.fileName(), form.file.contentType(), Files.newInputStream(form.file.uploadedFile()), form.file.size());
         invoice.fileObjectKey = objectKey;
         invoice.originalFilename = form.file.fileName();
         return InvoiceResponse.from(invoice);
