@@ -85,37 +85,40 @@ def extract_text(data: bytes, filename: str, content_type: str) -> str:
 
 def extract_text_with_ocr_space(data: bytes, filename: str, content_type: str) -> str:
     if not OCR_SPACE_API_KEY:
-        raise HTTPException(status_code=500, detail="OCR_SPACE_API_KEY is not configured")
+        return ""
 
     candidates = []
     errors = []
     languages = OCR_SPACE_LANGUAGES or ["eng"]
+    upload_variants = build_ocr_space_upload_variants(data, filename, content_type)
     for language in languages:
-        try:
-            response = requests.post(
-                OCR_SPACE_URL,
-                headers={"apikey": OCR_SPACE_API_KEY},
-                data={
-                    "language": language,
-                    "isOverlayRequired": "false",
-                    "OCREngine": OCR_SPACE_ENGINE,
-                    "scale": "true",
-                    "detectOrientation": "true",
-                    "isTable": "false",
-                },
-                files={"file": (filename, data, content_type)},
-                timeout=90,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            if payload.get("IsErroredOnProcessing"):
-                errors.append(str(payload.get("ErrorMessage") or payload.get("ErrorDetails") or "OCR.space processing error"))
-                continue
-            parsed_text = "\n".join(result.get("ParsedText", "") for result in payload.get("ParsedResults", []) if result.get("ParsedText"))
-            if parsed_text.strip():
-                candidates.append(parsed_text)
-        except Exception as exc:
-            errors.append(str(exc))
+        for variant_name, variant_data, variant_content_type in upload_variants:
+            for is_table in ("true", "false"):
+                try:
+                    response = requests.post(
+                        OCR_SPACE_URL,
+                        headers={"apikey": OCR_SPACE_API_KEY},
+                        data={
+                            "language": language,
+                            "isOverlayRequired": "false",
+                            "OCREngine": OCR_SPACE_ENGINE,
+                            "scale": "true",
+                            "detectOrientation": "true",
+                            "isTable": is_table,
+                        },
+                        files={"file": (variant_name, variant_data, variant_content_type)},
+                        timeout=90,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if payload.get("IsErroredOnProcessing"):
+                        errors.append(str(payload.get("ErrorMessage") or payload.get("ErrorDetails") or "OCR.space processing error"))
+                        continue
+                    parsed_text = "\n".join(result.get("ParsedText", "") for result in payload.get("ParsedResults", []) if result.get("ParsedText"))
+                    if parsed_text.strip():
+                        candidates.append(parsed_text)
+                except Exception as exc:
+                    errors.append(str(exc))
 
     if candidates:
         return max(candidates, key=score_ocr_text)
@@ -123,6 +126,21 @@ def extract_text_with_ocr_space(data: bytes, filename: str, content_type: str) -
         # Keep the endpoint usable if OCR.space has a temporary issue: local Tesseract remains a fallback.
         return ""
     return ""
+
+def build_ocr_space_upload_variants(data: bytes, filename: str, content_type: str) -> list[tuple[str, bytes, str]]:
+    variants = [(filename, data, content_type)]
+    is_pdf = filename.lower().endswith(".pdf") or content_type == "application/pdf" or data[:4] == b"%PDF"
+    if is_pdf:
+        return variants
+    try:
+        image = Image.open(io.BytesIO(data))
+        prepared = prepare_image(image)
+        buffer = io.BytesIO()
+        prepared.save(buffer, format="PNG")
+        variants.append((f"{filename.rsplit('.', 1)[0]}-enhanced.png", buffer.getvalue(), "image/png"))
+    except Exception:
+        pass
+    return variants
 
 def extract_text_with_tesseract(data: bytes, filename: str, content_type: str) -> str:
     is_pdf = filename.lower().endswith(".pdf") or content_type == "application/pdf" or data[:4] == b"%PDF"
@@ -169,13 +187,11 @@ def parse_suggestions(text: str) -> Suggestions:
         r"\b(\d{4}-\d{2}-\d{2})\b",
     ]))
     currency = detect_currency(normalized_text)
-    amount_ttc = find_amount(normalized_text, [
-        r"(?:total\s*(?:ttc|t\.t\.c\.|incl\.?\s*tax)?|montant\s*ttc|net\s*à\s*payer|amount\s*due|balance\s*due|grand\s*total)\D{0,35}([0-9][0-9\s.,]*)(?:\s*(?:€|eur|usd|\$))?",
-    ])
-    amount_ht = find_amount(normalized_text, [
-        r"(?:total\s*ht|montant\s*ht|sous\s*total|subtotal|hors\s*taxe|net\s*amount)\D{0,35}([0-9][0-9\s.,]*)",
-    ])
-    vat = find_amount(normalized_text, [r"(?:tva|vat|taxe|tax)\D{0,35}([0-9][0-9\s.,]*)"])
+    amount_ttc = find_labeled_amount(normalized_text, r"total\s*(?:ttc|t\.t\.c\.|incl\.?\s*tax)?|montant\s*ttc|net\s*à\s*payer|amount\s*due|balance\s*due|grand\s*total|total\s*due")
+    amount_ht = find_labeled_amount(normalized_text, r"total\s*ht|montant\s*ht|sous\s*total|subtotal|hors\s*taxe|net\s*amount|amount\s*before\s*tax")
+    vat = find_labeled_amount(normalized_text, r"\btva\b|\bvat\b|taxe|\btax\b")
+    if amount_ttc is None:
+        amount_ttc = find_largest_document_amount(normalized_text)
     return Suggestions(supplierName=supplier, invoiceNumber=invoice_number, invoiceDate=invoice_date,
                        amountHt=amount_ht, vatAmount=vat, amountTtc=amount_ttc, currency=currency)
 
@@ -185,7 +201,23 @@ def normalize_ocr_text(text: str) -> str:
         text = text.replace(source, target)
     return re.sub(r"[ \t]+", " ", text)
 
+def find_explicit_supplier(lines: list[str]) -> Optional[str]:
+    for index, line in enumerate(lines[:30]):
+        match = re.search(r"(?:fournisseur|supplier|vendor|seller|from|émetteur)\s*[:\-]\s*(.+)", line, re.I)
+        if match:
+            candidate = clean_supplier_line(match.group(1))
+            if is_supplier_candidate(candidate):
+                return candidate[:120]
+            for next_line in lines[index + 1:index + 4]:
+                candidate = clean_supplier_line(next_line)
+                if is_supplier_candidate(candidate):
+                    return candidate[:120]
+    return None
+
 def find_supplier(lines: list[str]) -> Optional[str]:
+    explicit_supplier = find_explicit_supplier(lines)
+    if explicit_supplier:
+        return explicit_supplier
     company_markers = re.compile(r"\b(sa|sas|sarl|eurl|gmbh|ltd|limited|inc|corp|llc|bv|ag|spa|srl|group|groupe)\b", re.I)
     candidates = []
     for index, line in enumerate(lines[:20]):
@@ -280,13 +312,47 @@ def find_first(text: str, patterns: list[str]) -> Optional[str]:
             return match.group(1).strip()
     return None
 
-def find_amount(text: str, patterns: list[str]) -> Optional[float]:
-    value = find_first(text, patterns)
-    if value is None:
+AMOUNT_RE = re.compile(r"(?<!\d)(?:\d{1,3}(?:[ .\u00a0]\d{3})+|\d+)(?:[,.]\d{2})(?!\d)")
+
+def find_labeled_amount(text: str, label_pattern: str) -> Optional[float]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    label_re = re.compile(label_pattern, re.I)
+    for index, line in enumerate(lines):
+        if not label_re.search(line):
+            continue
+        window = " ".join(lines[index:index + 2])
+        amounts = extract_amounts(window)
+        if amounts:
+            # Invoice rows often contain rate, VAT and total on one line; the payable value is usually the last amount.
+            return amounts[-1]
+    return None
+
+def find_largest_document_amount(text: str) -> Optional[float]:
+    amounts = extract_amounts(text)
+    if not amounts:
         return None
+    return max(amounts)
+
+def extract_amounts(text: str) -> list[float]:
+    amounts = []
+    for match in AMOUNT_RE.finditer(text):
+        before = text[max(0, match.start() - 8):match.start()]
+        after = text[match.end():match.end() + 3]
+        if "%" in after or re.search(r"\b(?:tva|vat|tax)\s*$", before, re.I) and "%" in text[match.end():match.end() + 8]:
+            continue
+        parsed = parse_amount_string(match.group(0))
+        if parsed is not None:
+            amounts.append(parsed)
+    return amounts
+
+def parse_amount_string(value: str) -> Optional[float]:
     normalized = value.replace(" ", "").replace("\u00a0", "")
     if "," in normalized and "." in normalized:
-        normalized = normalized.replace(".", "").replace(",", ".")
+        # The right-most separator is usually decimal; handle both 1,234.56 and 1.234,56.
+        if normalized.rfind(".") > normalized.rfind(","):
+            normalized = normalized.replace(",", "")
+        else:
+            normalized = normalized.replace(".", "").replace(",", ".")
     else:
         normalized = normalized.replace(",", ".")
     normalized = re.sub(r"[^0-9.]", "", normalized)
@@ -294,6 +360,15 @@ def find_amount(text: str, patterns: list[str]) -> Optional[float]:
         return float(Decimal(normalized))
     except Exception:
         return None
+
+def find_amount(text: str, patterns: list[str]) -> Optional[float]:
+    for pattern in patterns:
+        value = find_first(text, [pattern])
+        if value is not None:
+            parsed = parse_amount_string(value)
+            if parsed is not None:
+                return parsed
+    return None
 
 def parse_date(value: Optional[str]) -> Optional[str]:
     if not value:
