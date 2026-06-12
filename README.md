@@ -22,7 +22,7 @@ Puis ouvrir :
 - Frontend : http://localhost:3000
 - Backend API : http://localhost:8080
 - OCR healthcheck : http://localhost:8000/health
-- Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `providerfollowup`)
+- Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `ProviderFollowup!2026`)
 - Console MinIO : http://localhost:9001 (`minioadmin` / `minioadmin`)
 
 ## Workflow OCR
@@ -86,7 +86,7 @@ Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque 
 
 ## Metabase
 
-Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `providerfollowup`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes et total annuel.
+Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `ProviderFollowup!2026`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes et total annuel.
 
 ## OCR OCR.space
 

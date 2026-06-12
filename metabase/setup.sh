@@ -3,7 +3,7 @@ set -eu
 
 METABASE_URL="${METABASE_URL:-http://metabase:3000}"
 ADMIN_EMAIL="${MB_ADMIN_EMAIL:-admin@providerfollowup.local}"
-ADMIN_PASSWORD="${MB_ADMIN_PASSWORD:-providerfollowup}"
+ADMIN_PASSWORD="${MB_ADMIN_PASSWORD:-ProviderFollowup!2026}"
 DB_HOST="${APP_DB_HOST:-postgres}"
 DB_PORT="${APP_DB_PORT:-5432}"
 DB_NAME="${APP_DB_NAME:-providerfollowup}"
