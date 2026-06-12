@@ -70,9 +70,10 @@ services:
       - "8080:8080"
 
   frontend:
-    build: ./frontend
-    environment:
-      VITE_API_URL: http://localhost:8080
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080
     depends_on:
       - backend
     ports:
