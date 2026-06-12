@@ -12,12 +12,19 @@ public class Invoice extends PanacheEntityBase {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
+    @Column(name = "supplier_id")
     public Long supplierId;
+    @Column(name = "supplier_name")
     public String supplierName;
+    @Column(name = "invoice_number")
     public String invoiceNumber;
+    @Column(name = "invoice_date")
     public LocalDate invoiceDate;
+    @Column(name = "amount_ht")
     public BigDecimal amountHt;
+    @Column(name = "vat_amount")
     public BigDecimal vatAmount;
+    @Column(name = "amount_ttc")
     public BigDecimal amountTtc;
     public String currency = "EUR";
     public String category;
@@ -25,14 +32,19 @@ public class Invoice extends PanacheEntityBase {
     public InvoiceStatus status = InvoiceStatus.RECEIVED;
     @Column(length = 2048)
     public String comment;
+    @Column(name = "file_object_key")
     public String fileObjectKey;
+    @Column(name = "original_filename")
     public String originalFilename;
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "ocr_raw_text", columnDefinition = "TEXT")
     public String ocrRawText;
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "ocr_suggestions_json", columnDefinition = "TEXT")
     public String ocrSuggestionsJson;
+    @Column(name = "ocr_processed_at")
     public OffsetDateTime ocrProcessedAt;
+    @Column(name = "created_at")
     public OffsetDateTime createdAt;
+    @Column(name = "updated_at")
     public OffsetDateTime updatedAt;
 
     @PrePersist

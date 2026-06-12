@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ApplicationScoped
@@ -22,8 +23,10 @@ public class OcrServiceClient {
         try {
             String body = objectMapper.writeValueAsString(new OcrRequest(objectKey, filename, contentType));
             HttpRequest request = HttpRequest.newBuilder(URI.create(ocrServiceUrl + "/ocr/extract"))
+                    .version(HttpClient.Version.HTTP_1_1)
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .header("Accept", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
