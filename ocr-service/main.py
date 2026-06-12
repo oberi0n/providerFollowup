@@ -5,26 +5,27 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-import easyocr
-import numpy as np
 import pytesseract
+import requests
 from fastapi import FastAPI, HTTPException
 from minio import Minio
 from pdf2image import convert_from_bytes
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from pydantic import BaseModel
 
-app = FastAPI(title="Provider Follow-up Local OCR", version="1.0.0")
+app = FastAPI(title="Provider Follow-up OCR.space OCR", version="1.0.0")
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000").replace("http://", "").replace("https://", "")
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "invoices")
+OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "")
+OCR_SPACE_URL = os.getenv("OCR_SPACE_URL", "https://api.ocr.space/parse/image")
+OCR_SPACE_LANGUAGES = [lang.strip() for lang in os.getenv("OCR_SPACE_LANGUAGES", "fre,eng").split(",") if lang.strip()]
+OCR_SPACE_ENGINE = os.getenv("OCR_SPACE_ENGINE", "2")
 TESSERACT_LANGS = os.getenv("TESSERACT_LANGS", "fra+eng")
 TESSERACT_CONFIG = "--oem 3 --psm 4 -c preserve_interword_spaces=1"
-AI_OCR_LANGS = [lang.strip() for lang in os.getenv("AI_OCR_LANGS", "fr,en").split(",") if lang.strip()]
-_ai_reader = None
 
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=MINIO_SECURE)
 
@@ -49,7 +50,14 @@ class OcrResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "engine": "easyocr+tesseract-fallback", "aiLangs": AI_OCR_LANGS, "tesseractLangs": TESSERACT_LANGS}
+    return {
+        "status": "ok",
+        "engine": "ocr.space",
+        "ocrSpaceUrl": OCR_SPACE_URL,
+        "ocrSpaceLanguages": OCR_SPACE_LANGUAGES,
+        "fallback": "tesseract-local",
+        "apiKeyConfigured": bool(OCR_SPACE_API_KEY),
+    }
 
 @app.post("/ocr/extract", response_model=OcrResponse)
 def extract(request: OcrRequest):
@@ -61,22 +69,69 @@ def extract(request: OcrRequest):
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Cannot read object from MinIO: {exc}") from exc
 
-    raw_text = extract_text(data, request.filename or "", request.contentType or "")
+    filename = request.filename or "invoice-file"
+    content_type = request.contentType or guess_content_type(filename, data)
+    raw_text = extract_text(data, filename, content_type)
     suggestions = parse_suggestions(raw_text)
     filled = sum(1 for value in suggestions.model_dump().values() if value not in (None, ""))
     confidence = "HIGH" if filled >= 5 else "MEDIUM" if filled >= 3 else "LOW"
     return OcrResponse(rawText=raw_text, suggestions=suggestions, confidence=confidence)
 
 def extract_text(data: bytes, filename: str, content_type: str) -> str:
+    ocr_space_text = extract_text_with_ocr_space(data, filename, content_type)
+    if ocr_space_text.strip():
+        return ocr_space_text
+    return extract_text_with_tesseract(data, filename, content_type)
+
+def extract_text_with_ocr_space(data: bytes, filename: str, content_type: str) -> str:
+    if not OCR_SPACE_API_KEY:
+        raise HTTPException(status_code=500, detail="OCR_SPACE_API_KEY is not configured")
+
+    candidates = []
+    errors = []
+    languages = OCR_SPACE_LANGUAGES or ["eng"]
+    for language in languages:
+        try:
+            response = requests.post(
+                OCR_SPACE_URL,
+                headers={"apikey": OCR_SPACE_API_KEY},
+                data={
+                    "language": language,
+                    "isOverlayRequired": "false",
+                    "OCREngine": OCR_SPACE_ENGINE,
+                    "scale": "true",
+                    "detectOrientation": "true",
+                    "isTable": "false",
+                },
+                files={"file": (filename, data, content_type)},
+                timeout=90,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("IsErroredOnProcessing"):
+                errors.append(str(payload.get("ErrorMessage") or payload.get("ErrorDetails") or "OCR.space processing error"))
+                continue
+            parsed_text = "\n".join(result.get("ParsedText", "") for result in payload.get("ParsedResults", []) if result.get("ParsedText"))
+            if parsed_text.strip():
+                candidates.append(parsed_text)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if candidates:
+        return max(candidates, key=score_ocr_text)
+    if errors:
+        # Keep the endpoint usable if OCR.space has a temporary issue: local Tesseract remains a fallback.
+        return ""
+    return ""
+
+def extract_text_with_tesseract(data: bytes, filename: str, content_type: str) -> str:
     is_pdf = filename.lower().endswith(".pdf") or content_type == "application/pdf" or data[:4] == b"%PDF"
     try:
         images = convert_from_bytes(data, dpi=300) if is_pdf else [Image.open(io.BytesIO(data))]
         texts = []
         for image in images:
             prepared = prepare_image(image)
-            ai_text = extract_text_with_easyocr(prepared)
             text_candidates = [
-                ai_text,
                 pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config=TESSERACT_CONFIG),
                 pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config="--oem 3 --psm 6 -c preserve_interword_spaces=1"),
             ]
@@ -86,24 +141,6 @@ def extract_text(data: bytes, filename: str, content_type: str) -> str:
         return "\n\n".join(texts)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"OCR extraction failed: {exc}") from exc
-
-def get_ai_reader():
-    global _ai_reader
-    if _ai_reader is None:
-        _ai_reader = easyocr.Reader(AI_OCR_LANGS, gpu=False, verbose=False)
-    return _ai_reader
-
-def extract_text_with_easyocr(image: Image.Image) -> str:
-    try:
-        results = get_ai_reader().readtext(np.array(image), detail=1, paragraph=False)
-    except Exception:
-        return ""
-    lines = []
-    for _box, text, confidence in results:
-        cleaned = text.strip()
-        if cleaned and confidence >= 0.25:
-            lines.append(cleaned)
-    return "\n".join(lines)
 
 def score_ocr_text(text: str) -> tuple[int, int, int]:
     suggestions = parse_suggestions(text) if text.strip() else Suggestions()
@@ -197,9 +234,6 @@ def find_invoice_number(text: str) -> Optional[str]:
     for line in text.splitlines():
         if not re.search(r"facture|invoice|inv\.?|num(?:é|e)ro|number|no\b|n[o°.]|#", line, re.I):
             continue
-        if re.search(r"date|due|échéance|total|amount|montant|tva|vat", line, re.I):
-            # A mixed line can still contain an invoice number before the date/amount; keep parsing but lower false positives by using strict patterns.
-            pass
         for pattern in (
             r"(?:facture|invoice|inv\.?|document)\s*(?:no|n[o°.]?|number|num(?:é|e)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_./\-]{2,})",
             r"(?:no|n[o°.]?|number|num(?:é|e)ro|#)\s*(?:facture|invoice)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_./\-]{2,})",
@@ -270,3 +304,13 @@ def parse_date(value: Optional[str]) -> Optional[str]:
         except ValueError:
             continue
     return None
+
+def guess_content_type(filename: str, data: bytes) -> str:
+    lower_name = filename.lower()
+    if lower_name.endswith(".pdf") or data[:4] == b"%PDF":
+        return "application/pdf"
+    if lower_name.endswith(".png") or data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if lower_name.endswith(".jpg") or lower_name.endswith(".jpeg") or data[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    return "application/octet-stream"

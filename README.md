@@ -1,6 +1,6 @@
 # Provider Follow-up
 
-Application locale de suivi des factures fournisseurs avec OCR gratuit et local.
+Application de suivi des factures fournisseurs avec OCR OCR.space et fallback local.
 
 ## Stack
 
@@ -8,7 +8,7 @@ Application locale de suivi des factures fournisseurs avec OCR gratuit et local.
 - Backend : Quarkus REST API
 - Base : PostgreSQL
 - Stockage fichiers : MinIO
-- OCR : FastAPI + EasyOCR IA local (`fr,en`) + fallback Tesseract (`fra+eng`) + Poppler/pdf2image
+- OCR : FastAPI + OCR.space API + fallback Tesseract local (`fra+eng`) + Poppler/pdf2image
 - Déploiement : Docker Compose complet
 
 ## Lancement
@@ -31,7 +31,7 @@ Puis ouvrir :
 2. Uploader une image JPG/PNG ou un PDF.
 3. Le backend stocke le fichier dans le bucket MinIO `invoices`, sous `invoices/YYYY/MM/<uuid>-<nom-fichier>` selon la date de facture si elle est renseignée, sinon selon le mois courant.
 4. Le backend appelle le service interne `ocr-service` via `POST /ocr/extract`.
-5. Le service OCR lit le fichier depuis MinIO, convertit les PDF en images avec Poppler, lance EasyOCR en local (`fr,en`) puis utilise Tesseract comme fallback gratuit/local.
+5. Le service OCR lit le fichier depuis MinIO, envoie le fichier à OCR.space avec la clé configurée, puis utilise Tesseract local comme fallback si OCR.space ne renvoie aucun texte.
 6. Des heuristiques post-OCR proposent fournisseur, numéro, date, montants HT/TVA/TTC et devise.
 7. Le frontend affiche les suggestions et le texte OCR brut pour debug.
 8. L'utilisateur copie les suggestions souhaitées, corrige si besoin, puis valide.
@@ -88,6 +88,6 @@ Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque 
 
 Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `providerfollowup`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes et total annuel.
 
-## OCR IA local
+## OCR OCR.space
 
-L’OCR utilise EasyOCR, un moteur OCR à base de deep learning exécuté localement dans le conteneur `ocr-service`, sans API cloud payante. Les modèles `fr,en` sont initialisés dans l’image Docker et Tesseract reste disponible comme fallback local.
+L’OCR principal utilise OCR.space via `https://api.ocr.space/parse/image`. La clé API est fournie au conteneur avec `OCR_SPACE_API_KEY`; les langues configurées par défaut sont `fre,eng` et le moteur OCR.space `2`. Tesseract reste disponible comme fallback local si OCR.space ne renvoie aucun texte.

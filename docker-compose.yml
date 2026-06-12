@@ -40,8 +40,10 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: invoices
+      OCR_SPACE_API_KEY: K82588615788957
+      OCR_SPACE_LANGUAGES: fre,eng
+      OCR_SPACE_ENGINE: 2
       TESSERACT_LANGS: fra+eng
-      AI_OCR_LANGS: fr,en
     depends_on:
       minio:
         condition: service_healthy
