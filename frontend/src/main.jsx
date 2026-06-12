@@ -13,7 +13,6 @@ const emptyInvoice = {
   vatAmount: '',
   amountTtc: '',
   currency: 'EUR',
-  category: '',
   comment: '',
 }
 const suggestionFields = ['supplierName', 'invoiceNumber', 'invoiceDate', 'amountHt', 'vatAmount', 'amountTtc', 'currency']
@@ -51,7 +50,8 @@ function App() {
 
   function selectInvoice(invoice) {
     setSelected(invoice)
-    setForm({ ...emptyInvoice, ...invoice, invoiceDate: invoice.invoiceDate || '' })
+    const { category, status, ...editableInvoice } = invoice
+    setForm({ ...emptyInvoice, ...editableInvoice, invoiceDate: invoice.invoiceDate || '' })
     setOcrResult(invoice.ocrRawText ? { rawText: invoice.ocrRawText, suggestions: JSON.parse(invoice.ocrSuggestionsJson || '{}') } : null)
     setFile(null)
     setMessage('')
@@ -123,7 +123,7 @@ function App() {
     <header className="flex items-center justify-between">
       <div>
         <h1 className="text-3xl font-bold">Provider Follow-up</h1>
-        <p className="text-slate-600">Suivi factures fournisseurs avec OCR local Tesseract (fra + eng).</p>
+        <p className="text-slate-600">Suivi factures fournisseurs avec OCR IA local EasyOCR (fr + en).</p>
       </div>
       <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded bg-blue-600 px-4 py-2 text-white">Nouvelle facture</button>
     </header>
@@ -166,7 +166,7 @@ function App() {
       </form>
     </section>
 
-    {dashboard && <section className="grid grid-cols-1 gap-4 md:grid-cols-3"><Chart title="Par mois" data={dashboard.expensesByMonth} moneyValues/><Chart title="Par fournisseur" data={dashboard.expensesBySupplier} moneyValues/><Chart title="Par catégorie" data={dashboard.expensesByCategory} moneyValues/></section>}
+    {dashboard && <section className="grid grid-cols-1 gap-4 md:grid-cols-2"><Chart title="Par mois" data={dashboard.expensesByMonth} moneyValues/><Chart title="Par fournisseur" data={dashboard.expensesBySupplier} moneyValues/></section>}
   </main>
 }
 
@@ -181,7 +181,6 @@ function InvoiceFields({ form, setForm }) {
       ['vatAmount','TVA','number'],
       ['amountTtc','Montant TTC','number'],
       ['currency','Devise'],
-      ['category','Catégorie'],
     ].map(([name,label,type='text']) => <label key={name} className="text-sm font-medium">{label}<input name={name} type={type} step="0.01" value={form[name] ?? ''} onChange={update} className="mt-1 w-full rounded border p-2"/></label>)}
     <label className="text-sm font-medium md:col-span-2">Commentaire<textarea name="comment" value={form.comment ?? ''} onChange={update} className="mt-1 w-full rounded border p-2"/></label>
   </div>
@@ -217,7 +216,9 @@ function prefilledForm(current, suggestions) {
 }
 
 function normalizeForm(form) {
-  return Object.fromEntries(Object.entries(form).map(([k,v]) => [k, ['amountHt','vatAmount','amountTtc'].includes(k) && v !== '' ? Number(v) : (v === '' ? null : v)]))
+  return Object.fromEntries(Object.entries(form)
+    .filter(([k]) => k !== 'category' && k !== 'status')
+    .map(([k,v]) => [k, ['amountHt','vatAmount','amountTtc'].includes(k) && v !== '' ? Number(v) : (v === '' ? null : v)]))
 }
 
 function money(value) {

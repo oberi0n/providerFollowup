@@ -5,6 +5,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+import easyocr
+import numpy as np
 import pytesseract
 from fastapi import FastAPI, HTTPException
 from minio import Minio
@@ -21,6 +23,8 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "invoices")
 TESSERACT_LANGS = os.getenv("TESSERACT_LANGS", "fra+eng")
 TESSERACT_CONFIG = "--oem 3 --psm 4 -c preserve_interword_spaces=1"
+AI_OCR_LANGS = [lang.strip() for lang in os.getenv("AI_OCR_LANGS", "fr,en").split(",") if lang.strip()]
+_ai_reader = None
 
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=MINIO_SECURE)
 
@@ -45,7 +49,7 @@ class OcrResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "langs": TESSERACT_LANGS}
+    return {"status": "ok", "engine": "easyocr+tesseract-fallback", "aiLangs": AI_OCR_LANGS, "tesseractLangs": TESSERACT_LANGS}
 
 @app.post("/ocr/extract", response_model=OcrResponse)
 def extract(request: OcrRequest):
@@ -70,16 +74,41 @@ def extract_text(data: bytes, filename: str, content_type: str) -> str:
         texts = []
         for image in images:
             prepared = prepare_image(image)
+            ai_text = extract_text_with_easyocr(prepared)
             text_candidates = [
+                ai_text,
                 pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config=TESSERACT_CONFIG),
                 pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config="--oem 3 --psm 6 -c preserve_interword_spaces=1"),
             ]
             if max(len(candidate.strip()) for candidate in text_candidates) < 25:
                 text_candidates.append(pytesseract.image_to_string(prepared, lang=TESSERACT_LANGS, config="--oem 3 --psm 11"))
-            texts.append(max(text_candidates, key=lambda candidate: (len(extract_labeled_lines(candidate)), len(candidate))))
+            texts.append(max(text_candidates, key=score_ocr_text))
         return "\n\n".join(texts)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"OCR extraction failed: {exc}") from exc
+
+def get_ai_reader():
+    global _ai_reader
+    if _ai_reader is None:
+        _ai_reader = easyocr.Reader(AI_OCR_LANGS, gpu=False, verbose=False)
+    return _ai_reader
+
+def extract_text_with_easyocr(image: Image.Image) -> str:
+    try:
+        results = get_ai_reader().readtext(np.array(image), detail=1, paragraph=False)
+    except Exception:
+        return ""
+    lines = []
+    for _box, text, confidence in results:
+        cleaned = text.strip()
+        if cleaned and confidence >= 0.25:
+            lines.append(cleaned)
+    return "\n".join(lines)
+
+def score_ocr_text(text: str) -> tuple[int, int, int]:
+    suggestions = parse_suggestions(text) if text.strip() else Suggestions()
+    filled_fields = sum(1 for value in suggestions.model_dump().values() if value not in (None, ""))
+    return (filled_fields * 25 + len(extract_labeled_lines(text)) * 5, len(text), -text.count("�"))
 
 def prepare_image(image: Image.Image) -> Image.Image:
     image = ImageOps.exif_transpose(image).convert("L")

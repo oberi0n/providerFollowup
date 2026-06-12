@@ -8,7 +8,7 @@ Application locale de suivi des factures fournisseurs avec OCR gratuit et local.
 - Backend : Quarkus REST API
 - Base : PostgreSQL
 - Stockage fichiers : MinIO
-- OCR : FastAPI + Tesseract OCR (`fra+eng`) + Poppler/pdf2image
+- OCR : FastAPI + EasyOCR IA local (`fr,en`) + fallback Tesseract (`fra+eng`) + Poppler/pdf2image
 - Déploiement : Docker Compose complet
 
 ## Lancement
@@ -22,6 +22,7 @@ Puis ouvrir :
 - Frontend : http://localhost:3000
 - Backend API : http://localhost:8080
 - OCR healthcheck : http://localhost:8000/health
+- Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `providerfollowup`)
 - Console MinIO : http://localhost:9001 (`minioadmin` / `minioadmin`)
 
 ## Workflow OCR
@@ -30,8 +31,8 @@ Puis ouvrir :
 2. Uploader une image JPG/PNG ou un PDF.
 3. Le backend stocke le fichier dans le bucket MinIO `invoices`, sous `invoices/YYYY/MM/<uuid>-<nom-fichier>` selon la date de facture si elle est renseignée, sinon selon le mois courant.
 4. Le backend appelle le service interne `ocr-service` via `POST /ocr/extract`.
-5. Le service OCR lit le fichier depuis MinIO, convertit les PDF en images avec Poppler, puis lance Tesseract en français et anglais.
-6. Des regex simples proposent fournisseur, numéro, date, montants HT/TVA/TTC et devise.
+5. Le service OCR lit le fichier depuis MinIO, convertit les PDF en images avec Poppler, lance EasyOCR en local (`fr,en`) puis utilise Tesseract comme fallback gratuit/local.
+6. Des heuristiques post-OCR proposent fournisseur, numéro, date, montants HT/TVA/TTC et devise.
 7. Le frontend affiche les suggestions et le texte OCR brut pour debug.
 8. L'utilisateur copie les suggestions souhaitées, corrige si besoin, puis valide.
 9. Les champs validés et le résultat OCR brut sont conservés en base.
@@ -82,3 +83,11 @@ Le dashboard permet de choisir une année budgétaire et un budget annuel. L’A
 ## Organisation MinIO
 
 Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque upload utilise une clé objet du type `invoices/YYYY/MM/<uuid>-<nom-fichier>`, ce qui regroupe les factures par année et mois tout en évitant les collisions de noms.
+
+## Metabase
+
+Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `providerfollowup`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes et total annuel.
+
+## OCR IA local
+
+L’OCR utilise EasyOCR, un moteur OCR à base de deep learning exécuté localement dans le conteneur `ocr-service`, sans API cloud payante. Les modèles `fr,en` sont initialisés dans l’image Docker et Tesseract reste disponible comme fallback local.
