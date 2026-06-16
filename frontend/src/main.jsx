@@ -187,19 +187,18 @@ function App() {
 
     {message && <div className="rounded border border-blue-200 bg-blue-50 p-3 text-blue-900">{message}</div>}
 
-    <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <div className="rounded-xl bg-white p-4 shadow lg:col-span-1">
-        <h2 className="mb-2 flex items-center gap-2 text-xl font-semibold"><Upload size={20}/>OCR facture</h2>
-        <p className="mb-4 text-sm text-slate-600">1. Sélectionnez l’image/PDF, lancez l’OCR, puis validez les champs du formulaire à droite.</p>
-        <div className="space-y-3">
-          <input type="file" accept="image/png,image/jpeg,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="w-full rounded border p-2"/>
-          <button type="button" disabled={loadingOcr} onClick={uploadAndOcr} className="w-full rounded bg-purple-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-purple-300"><Wand2 className="inline" size={16}/> {loadingOcr ? 'OCR en cours…' : 'Lancer OCR et préremplir'}</button>
-        </div>
-        {ocrResult && <OcrPanel result={ocrResult} applySuggestion={applySuggestion}/>}
-      </div>
-
-      <form onSubmit={saveInvoice} className="rounded-xl bg-white p-4 shadow lg:col-span-2">
+    <section>
+      <form onSubmit={saveInvoice} className="rounded-xl bg-white p-4 shadow">
         <h2 className="mb-2 text-xl font-semibold">{selected ? `Facture #${selected.id}` : 'Formulaire facture'}</h2>
+        <div className="mb-5 rounded-xl border border-purple-100 bg-purple-50 p-4">
+          <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-purple-950"><Upload size={20}/>OCR facture</h3>
+          <p className="mb-4 text-sm text-purple-900">1. Sélectionnez l’image/PDF, lancez l’OCR, puis validez ou corrigez les champs du formulaire ci-dessous.</p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <input type="file" accept="image/png,image/jpeg,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="rounded border bg-white p-2"/>
+            <button type="button" disabled={loadingOcr} onClick={uploadAndOcr} className="rounded bg-purple-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-purple-300"><Wand2 className="inline" size={16}/> {loadingOcr ? 'OCR en cours…' : 'Lancer OCR et préremplir'}</button>
+          </div>
+          {ocrResult && <OcrPanel result={ocrResult} applySuggestion={applySuggestion}/>}
+        </div>
         <p className="mb-4 text-sm text-slate-600">2. Les champs fournisseur, date, montant TTC et CAPEX/OPEX sont obligatoires avant validation.</p>
         <InvoiceFields form={form} setForm={setForm}/>
         <div className="mt-4 flex gap-3"><button className="rounded bg-emerald-600 px-4 py-2 text-white">Valider / enregistrer</button></div>
