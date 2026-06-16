@@ -20,6 +20,7 @@ const emptyInvoice = {
   vatAmount: '',
   amountTtc: '',
   currency: 'EUR',
+  budgetType: '',
   comment: '',
 }
 const suggestionFields = ['supplierName', 'invoiceNumber', 'invoiceDate', 'amountHt', 'vatAmount', 'amountTtc', 'currency']
@@ -34,7 +35,8 @@ function App() {
   const [message, setMessage] = useState('')
   const [loadingOcr, setLoadingOcr] = useState(false)
   const [fiscalYear, setFiscalYear] = useState(currentYear)
-  const [annualBudget, setAnnualBudget] = useState(120000)
+  const [opexBudget, setOpexBudget] = useState(80000)
+  const [capexBudget, setCapexBudget] = useState(40000)
   const [authenticated, setAuthenticated] = useState(false)
   const [authReady, setAuthReady] = useState(false)
   const [userProfile, setUserProfile] = useState(null)
@@ -58,7 +60,7 @@ function App() {
     if (authenticated) {
       refresh().catch(error => setMessage(`Erreur chargement : ${error.message}`))
     }
-  }, [authenticated, fiscalYear, annualBudget])
+  }, [authenticated, fiscalYear, opexBudget, capexBudget])
 
   async function authFetch(url, options = {}) {
     await keycloak.updateToken(30).catch(() => keycloak.login().then(() => Promise.reject(new Error('Session Keycloak expirée'))))
@@ -68,7 +70,7 @@ function App() {
   }
 
   async function refresh() {
-    const params = new URLSearchParams({ year: String(fiscalYear), budget: String(annualBudget || 0) })
+    const params = new URLSearchParams({ year: String(fiscalYear), opexBudget: String(opexBudget || 0), capexBudget: String(capexBudget || 0) })
     const [invoiceRes, dashRes] = await Promise.all([authFetch(`${API}/api/invoices`), authFetch(`${API}/api/dashboard?${params}`)])
     if (!invoiceRes.ok) throw new Error(await invoiceRes.text())
     if (!dashRes.ok) throw new Error(await dashRes.text())
@@ -93,9 +95,10 @@ function App() {
     setMessage('')
   }
 
-  async function persistInvoice(invoiceForm = form, invoiceId = selected?.id) {
+  async function persistInvoice(invoiceForm = form, invoiceId = selected?.id, draft = false) {
     const payload = normalizeForm(invoiceForm)
-    const res = await authFetch(invoiceId ? `${API}/api/invoices/${invoiceId}` : `${API}/api/invoices`, {
+    const draftQuery = draft ? '?draft=true' : ''
+    const res = await authFetch(invoiceId ? `${API}/api/invoices/${invoiceId}${draftQuery}` : `${API}/api/invoices${draftQuery}`, {
       method: invoiceId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -120,7 +123,7 @@ function App() {
     setLoadingOcr(true)
     setMessage('OCR en cours : création de la facture, upload du fichier puis extraction locale…')
     try {
-      const invoice = await persistInvoice()
+      const invoice = await persistInvoice(form, selected?.id, true)
       setSelected(invoice)
       const body = new FormData()
       body.append('file', file)
@@ -135,7 +138,7 @@ function App() {
 
       setOcrResult(result)
       setForm(prefilled)
-      const savedWithOcrDate = await persistInvoice(prefilled, invoice.id)
+      const savedWithOcrDate = await persistInvoice(prefilled, invoice.id, true)
       setSelected(savedWithOcrDate)
       setMessage('OCR terminé : les champs vides ont été préremplis et le fichier a été rangé selon la date de facture détectée. Vérifiez/corrigez puis cliquez sur “Valider / enregistrer”.')
       await refresh()
@@ -153,10 +156,11 @@ function App() {
   const budgetYears = useMemo(() => Array.from({ length: 5 }, (_, index) => currentYear - 2 + index), [])
   const invoicesForYear = useMemo(() => invoices.filter(invoice => !invoice.invoiceDate || new Date(invoice.invoiceDate).getFullYear() === fiscalYear), [invoices, fiscalYear])
   const cards = useMemo(() => dashboard ? [
-    ['Budget annuel', dashboard.annualBudget],
-    ['Consommé', dashboard.consumed],
+    ['OPEX consommé', dashboard.opexConsumed],
+    ['OPEX restant', dashboard.opexAvailable],
+    ['CAPEX consommé', dashboard.capexConsumed],
+    ['CAPEX restant', dashboard.capexAvailable],
     ['Engagé non payé', dashboard.committedUnpaid],
-    ['Reste disponible', dashboard.available],
   ] : [], [dashboard])
 
   if (!authReady) {
@@ -199,11 +203,25 @@ function App() {
             <input type="number" value={fiscalYear} onChange={e => setFiscalYear(Number(e.target.value || currentYear))} className="w-28 rounded-full border px-4 py-2 text-sm" aria-label="Année budgétaire personnalisée"/>
           </div>
         </div>
-        <label className="text-sm font-medium">Budget annuel
-          <input type="number" step="0.01" value={annualBudget} onChange={e => setAnnualBudget(Number(e.target.value || 0))} className="mt-1 w-full rounded border p-2 lg:w-56"/>
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm font-medium">Budget OPEX
+            <input type="number" step="0.01" value={opexBudget} onChange={e => setOpexBudget(Number(e.target.value || 0))} className="mt-1 w-full rounded border p-2 lg:w-44"/>
+          </label>
+          <label className="text-sm font-medium">Budget CAPEX
+            <input type="number" step="0.01" value={capexBudget} onChange={e => setCapexBudget(Number(e.target.value || 0))} className="mt-1 w-full rounded border p-2 lg:w-44"/>
+          </label>
+        </div>
       </div>
     </section>
+
+    {dashboard && <section className="rounded-xl bg-white p-4 shadow">
+      <h2 className="mb-3 text-xl font-semibold">Synthèse globale CAPEX + OPEX</h2>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded bg-slate-50 p-3"><p className="text-sm text-slate-500">Budget global</p><p className="text-2xl font-bold">{money(dashboard.annualBudget)}</p></div>
+        <div className="rounded bg-slate-50 p-3"><p className="text-sm text-slate-500">Consommé global</p><p className="text-2xl font-bold">{money(dashboard.consumed)}</p></div>
+        <div className="rounded bg-slate-50 p-3"><p className="text-sm text-slate-500">Reste global</p><p className="text-2xl font-bold">{money(dashboard.available)}</p></div>
+      </div>
+    </section>}
 
     <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
       {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-white p-4 shadow"><p className="text-sm text-slate-500">{label}</p><p className="text-2xl font-bold">{money(value)}</p></div>)}
@@ -218,8 +236,8 @@ function App() {
         <div className="max-h-[520px] overflow-auto">
           {invoicesForYear.length === 0 && <p className="p-4 text-sm text-slate-500">Aucune facture pour cette année.</p>}
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Fournisseur</th><th className="p-3 text-right">TTC</th></tr></thead>
-            <tbody>{invoicesForYear.map(invoice => <tr key={invoice.id} onClick={() => selectInvoice(invoice)} className={`cursor-pointer border-t hover:bg-blue-50 ${selected?.id === invoice.id ? 'bg-blue-50' : ''}`}><td className="p-3 whitespace-nowrap">{invoice.invoiceDate || '—'}</td><td className="p-3"><div className="font-semibold text-slate-900">{invoice.supplierName || 'Sans fournisseur'}</div><div className="text-xs text-slate-500">{invoice.invoiceNumber || 'N° ?'}</div></td><td className="p-3 text-right font-semibold">{money(invoice.amountTtc)}</td></tr>)}</tbody>
+            <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Fournisseur</th><th className="p-3">Budget</th><th className="p-3 text-right">TTC</th></tr></thead>
+            <tbody>{invoicesForYear.map(invoice => <tr key={invoice.id} onClick={() => selectInvoice(invoice)} className={`cursor-pointer border-t hover:bg-blue-50 ${selected?.id === invoice.id ? 'bg-blue-50' : ''}`}><td className="p-3 whitespace-nowrap">{invoice.invoiceDate || '—'}</td><td className="p-3"><div className="font-semibold text-slate-900">{invoice.supplierName || 'Sans fournisseur'}</div><div className="text-xs text-slate-500">{invoice.invoiceNumber || 'N° ?'}</div></td><td className="p-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold">{invoice.budgetType || '—'}</span></td><td className="p-3 text-right font-semibold">{money(invoice.amountTtc)}</td></tr>)}</tbody>
           </table>
         </div>
       </div>
@@ -246,7 +264,8 @@ function InvoiceFields({ form, setForm }) {
       ['vatAmount','TVA','number'],
       ['amountTtc','Montant TTC','number'],
       ['currency','Devise'],
-    ].map(([name,label,type='text']) => <label key={name} className="text-sm font-medium">{label}<input name={name} type={type} step="0.01" value={form[name] ?? ''} onChange={update} className="mt-1 w-full rounded border p-2"/></label>)}
+    ].map(([name,label,type='text']) => <label key={name} className="text-sm font-medium">{label}{['supplierName','invoiceDate','amountTtc'].includes(name) && <span className="text-red-600"> *</span>}<input name={name} type={type} step="0.01" required={['supplierName','invoiceDate','amountTtc'].includes(name)} value={form[name] ?? ''} onChange={update} className="mt-1 w-full rounded border p-2"/></label>)}
+    <label className="text-sm font-medium">Budget <span className="text-red-600">*</span><select name="budgetType" required value={form.budgetType ?? ''} onChange={update} className="mt-1 w-full rounded border p-2"><option value="">Sélectionner</option><option value="OPEX">OPEX</option><option value="CAPEX">CAPEX</option></select></label>
     <label className="text-sm font-medium md:col-span-2">Commentaire<textarea name="comment" value={form.comment ?? ''} onChange={update} className="mt-1 w-full rounded border p-2"/></label>
   </div>
 }

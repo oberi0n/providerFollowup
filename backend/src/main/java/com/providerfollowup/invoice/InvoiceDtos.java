@@ -14,6 +14,7 @@ public class InvoiceDtos {
             BigDecimal amountHt,
             BigDecimal vatAmount,
             BigDecimal amountTtc,
+            BudgetType budgetType,
             String currency,
             String category,
             InvoiceStatus status,
@@ -28,6 +29,7 @@ public class InvoiceDtos {
             BigDecimal amountHt,
             BigDecimal vatAmount,
             BigDecimal amountTtc,
+            BudgetType budgetType,
             String currency,
             String category,
             InvoiceStatus status,
@@ -41,8 +43,8 @@ public class InvoiceDtos {
             OffsetDateTime updatedAt) {
         public static InvoiceResponse from(Invoice invoice) {
             return new InvoiceResponse(invoice.id, invoice.supplierId, invoice.supplierName, invoice.invoiceNumber,
-                    invoice.invoiceDate, invoice.amountHt, invoice.vatAmount, invoice.amountTtc, invoice.currency,
-                    invoice.category, invoice.status, invoice.comment, invoice.fileObjectKey, invoice.originalFilename,
+                    invoice.invoiceDate, invoice.amountHt, invoice.vatAmount, invoice.amountTtc, invoice.budgetType,
+                    invoice.currency, invoice.category, invoice.status, invoice.comment, invoice.fileObjectKey, invoice.originalFilename,
                     invoice.ocrRawText, invoice.ocrSuggestionsJson, invoice.ocrProcessedAt, invoice.createdAt, invoice.updatedAt);
         }
     }

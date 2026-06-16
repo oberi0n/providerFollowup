@@ -111,6 +111,7 @@ public class MinioStorageService {
         putMetadata(metadata, "amount-ht", invoice.amountHt);
         putMetadata(metadata, "vat-amount", invoice.vatAmount);
         putMetadata(metadata, "amount-ttc", invoice.amountTtc);
+        putMetadata(metadata, "budget-type", invoice.budgetType);
         putMetadata(metadata, "currency", invoice.currency);
         putMetadata(metadata, "comment", invoice.comment);
         return metadata;

@@ -26,6 +26,9 @@ public class Invoice extends PanacheEntityBase {
     public BigDecimal vatAmount;
     @Column(name = "amount_ttc")
     public BigDecimal amountTtc;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "budget_type")
+    public BudgetType budgetType;
     public String currency = "EUR";
     public String category;
     @Enumerated(EnumType.STRING)

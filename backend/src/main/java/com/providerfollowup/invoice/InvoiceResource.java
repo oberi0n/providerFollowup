@@ -38,9 +38,9 @@ public class InvoiceResource {
     @POST
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response create(InvoiceRequest request) {
+    public Response create(InvoiceRequest request, @QueryParam("draft") @DefaultValue("false") boolean draft) {
         Invoice invoice = new Invoice();
-        applyValidatedFields(invoice, request);
+        applyFields(invoice, request, !draft);
         invoice.persist();
         return Response.status(Response.Status.CREATED).entity(InvoiceResponse.from(invoice)).build();
     }
@@ -49,9 +49,9 @@ public class InvoiceResource {
     @Path("/{id}")
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
-    public InvoiceResponse update(@PathParam("id") Long id, InvoiceRequest request) throws Exception {
+    public InvoiceResponse update(@PathParam("id") Long id, InvoiceRequest request, @QueryParam("draft") @DefaultValue("false") boolean draft) throws Exception {
         Invoice invoice = findInvoice(id);
-        applyValidatedFields(invoice, request);
+        applyFields(invoice, request, !draft);
         relocateStoredFile(invoice);
         return InvoiceResponse.from(invoice);
     }
@@ -119,8 +119,11 @@ public class InvoiceResource {
         }
     }
 
-    private void applyValidatedFields(Invoice invoice, InvoiceRequest request) {
+    private void applyFields(Invoice invoice, InvoiceRequest request, boolean validate) {
         if (request == null) return;
+        if (validate) {
+            validateRequiredFields(request);
+        }
         invoice.supplierId = request.supplierId();
         invoice.supplierName = request.supplierName();
         invoice.invoiceNumber = request.invoiceNumber();
@@ -128,10 +131,26 @@ public class InvoiceResource {
         invoice.amountHt = request.amountHt();
         invoice.vatAmount = request.vatAmount();
         invoice.amountTtc = request.amountTtc();
+        invoice.budgetType = request.budgetType();
         invoice.currency = request.currency() == null || request.currency().isBlank() ? "EUR" : request.currency();
         invoice.category = request.category();
         invoice.status = request.status() == null ? InvoiceStatus.RECEIVED : request.status();
         invoice.comment = request.comment();
+    }
+
+    private void validateRequiredFields(InvoiceRequest request) {
+        if (request.supplierName() == null || request.supplierName().isBlank()) {
+            throw new BadRequestException("Le fournisseur est obligatoire");
+        }
+        if (request.invoiceDate() == null) {
+            throw new BadRequestException("La date de facture est obligatoire");
+        }
+        if (request.amountTtc() == null) {
+            throw new BadRequestException("Le montant TTC est obligatoire");
+        }
+        if (request.budgetType() == null) {
+            throw new BadRequestException("Le type de budget CAPEX/OPEX est obligatoire");
+        }
     }
 
     private OcrResultResponse toOcrResponse(Invoice invoice, String confidence) throws Exception {
