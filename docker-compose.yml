@@ -21,16 +21,46 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_IDENTITY_OPENID_DISPLAY_NAME: Keycloak
+      MINIO_IDENTITY_OPENID_CONFIG_URL: http://keycloak:8080/realms/provider-followup/.well-known/openid-configuration
+      MINIO_IDENTITY_OPENID_CLIENT_ID: minio
+      MINIO_IDENTITY_OPENID_CLIENT_SECRET: minio-secret
+      MINIO_IDENTITY_OPENID_SCOPES: openid,profile,email
+      MINIO_IDENTITY_OPENID_CLAIM_NAME: policy
+      MINIO_IDENTITY_OPENID_REDIRECT_URI: http://localhost:9001/oauth_callback
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio-data:/data
+    depends_on:
+      keycloak:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak/provider-followup-realm.json:/opt/keycloak/data/import/provider-followup-realm.json:ro
+      - keycloak-data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec \"exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /realms/provider-followup/.well-known/openid-configuration HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q 'provider-followup'\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   ocr-service:
     build: ./ocr-service
@@ -62,6 +92,10 @@ services:
       MINIO_BUCKET: invoices
       OCR_SERVICE_URL: http://ocr-service:8000
       CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/provider-followup
+      KEYCLOAK_BACKEND_CLIENT_ID: provider-followup-backend
+      KEYCLOAK_BACKEND_CLIENT_SECRET: backend-secret
+      KEYCLOAK_TOKEN_ISSUER: any
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,6 +103,8 @@ services:
         condition: service_healthy
       ocr-service:
         condition: service_started
+      keycloak:
+        condition: service_healthy
     ports:
       - "8080:8080"
 
@@ -77,6 +113,9 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: http://localhost:8080
+        VITE_KEYCLOAK_URL: http://localhost:8081
+        VITE_KEYCLOAK_REALM: provider-followup
+        VITE_KEYCLOAK_CLIENT_ID: provider-followup-frontend
     depends_on:
       - backend
     ports:
@@ -118,3 +157,4 @@ volumes:
   postgres-data:
   minio-data:
   metabase-data:
+  keycloak-data:

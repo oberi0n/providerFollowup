@@ -1,9 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import Keycloak from 'keycloak-js'
 import { Calendar, FileText, Upload, Wand2 } from 'lucide-react'
 import './index.css'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const keycloak = new Keycloak({
+  url: import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8081',
+  realm: import.meta.env.VITE_KEYCLOAK_REALM || 'provider-followup',
+  clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'provider-followup-frontend',
+})
 const currentYear = new Date().getFullYear()
 const emptyInvoice = {
   supplierName: '',
@@ -28,12 +34,41 @@ function App() {
   const [loadingOcr, setLoadingOcr] = useState(false)
   const [fiscalYear, setFiscalYear] = useState(currentYear)
   const [annualBudget, setAnnualBudget] = useState(120000)
+  const [authenticated, setAuthenticated] = useState(false)
+  const [authReady, setAuthReady] = useState(false)
+  const [userProfile, setUserProfile] = useState(null)
 
-  useEffect(() => { refresh() }, [fiscalYear, annualBudget])
+  useEffect(() => {
+    keycloak.init({ onLoad: 'login-required', pkceMethod: 'S256', checkLoginIframe: false })
+      .then(isAuthenticated => {
+        setAuthenticated(isAuthenticated)
+        setAuthReady(true)
+        if (isAuthenticated) {
+          keycloak.loadUserProfile().then(setUserProfile).catch(() => setUserProfile({ username: keycloak.tokenParsed?.preferred_username }))
+        }
+      })
+      .catch(error => {
+        setMessage(`Erreur Keycloak : ${error}`)
+        setAuthReady(true)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (authenticated) {
+      refresh().catch(error => setMessage(`Erreur chargement : ${error.message}`))
+    }
+  }, [authenticated, fiscalYear, annualBudget])
+
+  async function authFetch(url, options = {}) {
+    await keycloak.updateToken(30).catch(() => keycloak.login().then(() => Promise.reject(new Error('Session Keycloak expirée'))))
+    const headers = new Headers(options.headers || {})
+    headers.set('Authorization', `Bearer ${keycloak.token}`)
+    return fetch(url, { ...options, headers })
+  }
 
   async function refresh() {
     const params = new URLSearchParams({ year: String(fiscalYear), budget: String(annualBudget || 0) })
-    const [invoiceRes, dashRes] = await Promise.all([fetch(`${API}/api/invoices`), fetch(`${API}/api/dashboard?${params}`)])
+    const [invoiceRes, dashRes] = await Promise.all([authFetch(`${API}/api/invoices`), authFetch(`${API}/api/dashboard?${params}`)])
     if (!invoiceRes.ok) throw new Error(await invoiceRes.text())
     if (!dashRes.ok) throw new Error(await dashRes.text())
     setInvoices(await invoiceRes.json())
@@ -59,7 +94,7 @@ function App() {
 
   async function persistInvoice(invoiceForm = form, invoiceId = selected?.id) {
     const payload = normalizeForm(invoiceForm)
-    const res = await fetch(invoiceId ? `${API}/api/invoices/${invoiceId}` : `${API}/api/invoices`, {
+    const res = await authFetch(invoiceId ? `${API}/api/invoices/${invoiceId}` : `${API}/api/invoices`, {
       method: invoiceId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -89,10 +124,10 @@ function App() {
       const body = new FormData()
       body.append('file', file)
 
-      const uploadRes = await fetch(`${API}/api/invoices/${invoice.id}/upload`, { method: 'POST', body })
+      const uploadRes = await authFetch(`${API}/api/invoices/${invoice.id}/upload`, { method: 'POST', body })
       if (!uploadRes.ok) throw new Error(await uploadRes.text())
 
-      const ocrRes = await fetch(`${API}/api/invoices/${invoice.id}/ocr`, { method: 'POST' })
+      const ocrRes = await authFetch(`${API}/api/invoices/${invoice.id}/ocr`, { method: 'POST' })
       if (!ocrRes.ok) throw new Error(await ocrRes.text())
       const result = await ocrRes.json()
       const prefilled = prefilledForm(form, result.suggestions || {})
@@ -123,13 +158,21 @@ function App() {
     ['Reste disponible', dashboard.available],
   ] : [], [dashboard])
 
+  if (!authReady) {
+    return <main className="mx-auto max-w-3xl p-6"><div className="rounded-xl bg-white p-6 shadow">Connexion à Keycloak en cours…</div></main>
+  }
+
   return <main className="mx-auto max-w-7xl p-6 space-y-6">
     <header className="flex items-center justify-between">
       <div>
         <h1 className="text-3xl font-bold">Provider Follow-up</h1>
         <p className="text-slate-600">Suivi factures fournisseurs avec OCR OCR.space et fallback local.</p>
       </div>
-      <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded bg-blue-600 px-4 py-2 text-white">Nouvelle facture</button>
+      <div className="flex items-center gap-3">
+        <span className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-700">Connecté : {userProfile?.username || userProfile?.email || 'admin'}</span>
+        <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded bg-blue-600 px-4 py-2 text-white">Nouvelle facture</button>
+        <button onClick={() => keycloak.logout({ redirectUri: window.location.origin })} className="rounded border border-slate-300 px-4 py-2 text-slate-700">Déconnexion</button>
+      </div>
     </header>
 
     {message && <div className="rounded border border-blue-200 bg-blue-50 p-3 text-blue-900">{message}</div>}

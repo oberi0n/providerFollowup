@@ -21,9 +21,19 @@ Puis ouvrir :
 
 - Frontend : http://localhost:3000
 - Backend API : http://localhost:8080
+- Keycloak : http://localhost:8081 (`admin` / `admin`)
 - OCR healthcheck : http://localhost:8000/health
 - Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `ProviderFollowup!2026`)
-- Console MinIO : http://localhost:9001 (`minioadmin` / `minioadmin`)
+- Console MinIO : http://localhost:9001 (bouton Keycloak, `admin` / `admin`; compte technique root `minioadmin` / `minioadmin`)
+
+## Authentification Keycloak
+
+Docker Compose démarre un serveur Keycloak local et importe automatiquement le realm `provider-followup` depuis `keycloak/provider-followup-realm.json`. Un utilisateur de démonstration unique est créé pour le frontend, l’API backend et la console MinIO : `admin` / `admin`.
+
+- Le frontend React utilise le client public `provider-followup-frontend`, force la connexion Keycloak au chargement, puis envoie le token Bearer à chaque appel API.
+- Le backend Quarkus protège les routes `/api/*` avec OIDC via le client confidentiel `provider-followup-backend`.
+- MinIO expose le bouton de connexion OpenID “Keycloak” et lit le claim `policy=consoleAdmin` émis pour l’utilisateur `admin`.
+- Metabase Community Edition ne fournit pas de SSO Keycloak OpenID Connect natif sans extension/édition payante ; il conserve donc son compte local auto-configuré indiqué ci-dessus.
 
 ## Workflow OCR
 
