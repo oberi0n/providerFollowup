@@ -65,9 +65,9 @@ public class InvoiceResource {
         if (form == null || form.file == null) {
             throw new BadRequestException("Champ fichier 'file' manquant");
         }
-        String objectKey = storageService.upload(invoice.invoiceDate, form.file.fileName(), form.file.contentType(), Files.newInputStream(form.file.uploadedFile()), form.file.size());
-        invoice.fileObjectKey = objectKey;
         invoice.originalFilename = form.file.fileName();
+        String objectKey = storageService.upload(invoice, form.file.fileName(), form.file.contentType(), Files.newInputStream(form.file.uploadedFile()), form.file.size());
+        invoice.fileObjectKey = objectKey;
         return InvoiceResponse.from(invoice);
     }
 
@@ -87,7 +87,7 @@ public class InvoiceResource {
         if (invoice.invoiceDate == null && suggestedDate != null) {
             invoice.invoiceDate = suggestedDate;
         }
-        invoice.fileObjectKey = storageService.moveToInvoiceMonth(invoice.fileObjectKey, invoice.invoiceDate, invoice.originalFilename);
+        invoice.fileObjectKey = storageService.syncObjectWithInvoice(invoice.fileObjectKey, invoice);
         // OCR date is only applied when no invoice date existed yet; already validated dates are never overwritten.
         return toOcrResponse(invoice, result.confidence());
     }
@@ -105,7 +105,7 @@ public class InvoiceResource {
     }
 
     private void relocateStoredFile(Invoice invoice) throws Exception {
-        invoice.fileObjectKey = storageService.moveToInvoiceMonth(invoice.fileObjectKey, invoice.invoiceDate, invoice.originalFilename);
+        invoice.fileObjectKey = storageService.syncObjectWithInvoice(invoice.fileObjectKey, invoice);
     }
 
     private LocalDate parseSuggestedInvoiceDate(OcrResult result) {

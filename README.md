@@ -35,7 +35,7 @@ Puis ouvrir :
 6. Des heuristiques post-OCR proposent fournisseur, numéro, date, montants HT/TVA/TTC et devise.
 7. Le frontend affiche les suggestions et le texte OCR brut pour debug.
 8. L'utilisateur copie les suggestions souhaitées, corrige si besoin, puis valide.
-9. Les champs validés et le résultat OCR brut sont conservés en base.
+9. Les champs validés et le résultat OCR brut sont conservés en base, et les champs principaux de la facture sont synchronisés dans les métadonnées de l’objet MinIO.
 
 > Important : l'OCR ne remplace jamais automatiquement les champs validés d'une facture. Les suggestions sont stockées séparément dans `ocrSuggestionsJson`.
 
@@ -82,7 +82,7 @@ Le dashboard permet de choisir une année budgétaire et un budget annuel. L’A
 
 ## Organisation MinIO
 
-Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque upload utilise une clé objet du type `invoices/YYYY/MM/<uuid>-<nom-fichier>`, ce qui regroupe les factures par année et mois tout en évitant les collisions de noms. Si la date de facture est connue au moment de l’upload, elle détermine immédiatement `YYYY/MM`. Si la date est détectée par OCR, le backend l’applique uniquement quand la facture n’avait pas encore de date, puis déplace immédiatement l’objet MinIO vers le mois correspondant. Si l’utilisateur corrige ensuite la date lors de la validation, le backend déplace à nouveau l’objet vers le mois corrigé.
+Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque upload utilise une clé objet du type `invoices/YYYY/MM/<uuid>-<nom-fichier>`, ce qui regroupe les factures par année et mois tout en évitant les collisions de noms. Si la date de facture est connue au moment de l’upload, elle détermine immédiatement `YYYY/MM`. Si la date est détectée par OCR, le backend l’applique uniquement quand la facture n’avait pas encore de date, puis déplace immédiatement l’objet MinIO vers le mois correspondant. Si l’utilisateur corrige ensuite la date lors de la validation, le backend déplace à nouveau l’objet vers le mois corrigé. À chaque upload, OCR ou enregistrement, les informations validées du formulaire (`supplierName`, `invoiceNumber`, `invoiceDate`, montants, devise et commentaire) sont aussi réécrites dans les métadonnées MinIO de l’objet pour faciliter l’inspection côté stockage.
 
 ## Metabase
 

@@ -3,6 +3,7 @@ package com.providerfollowup.invoice;
 import io.minio.BucketExistsArgs;
 import io.minio.CopyObjectArgs;
 import io.minio.CopySource;
+import io.minio.Directive;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -15,6 +16,8 @@ import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @ApplicationScoped
@@ -22,35 +25,52 @@ public class MinioStorageService {
     @Inject MinioClient minioClient;
     @ConfigProperty(name = "minio.bucket") String bucket;
 
-    public String upload(LocalDate invoiceDate, String originalFilename, String contentType, InputStream inputStream, long size) throws Exception {
+    public String upload(Invoice invoice, String originalFilename, String contentType, InputStream inputStream, long size) throws Exception {
         ensureBucket();
-        String objectKey = buildObjectKey(invoiceDate, originalFilename, null);
+        String objectKey = buildObjectKey(invoice == null ? null : invoice.invoiceDate, originalFilename, null);
         minioClient.putObject(PutObjectArgs.builder()
                 .bucket(bucket)
                 .object(objectKey)
                 .stream(inputStream, size, -1)
                 .contentType(contentType == null ? "application/octet-stream" : contentType)
+                .userMetadata(metadataFor(invoice))
                 .build());
         return objectKey;
     }
 
-    public String moveToInvoiceMonth(String currentObjectKey, LocalDate invoiceDate, String originalFilename) throws Exception {
-        if (currentObjectKey == null || invoiceDate == null) {
+    public String syncObjectWithInvoice(String currentObjectKey, Invoice invoice) throws Exception {
+        if (currentObjectKey == null || invoice == null) {
             return currentObjectKey;
         }
         ensureBucket();
-        String targetPrefix = prefixFor(invoiceDate);
-        if (currentObjectKey.startsWith(targetPrefix)) {
-            return currentObjectKey;
+        LocalDate invoiceDate = invoice.invoiceDate;
+        String targetObjectKey = currentObjectKey;
+        if (invoiceDate != null && !currentObjectKey.startsWith(prefixFor(invoiceDate))) {
+            targetObjectKey = buildObjectKey(invoiceDate, invoice.originalFilename, objectSuffix(currentObjectKey, invoice.originalFilename));
         }
-        String newObjectKey = buildObjectKey(invoiceDate, originalFilename, objectSuffix(currentObjectKey, originalFilename));
+        copyReplacingMetadata(currentObjectKey, targetObjectKey, metadataFor(invoice));
+        if (!targetObjectKey.equals(currentObjectKey)) {
+            minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(currentObjectKey).build());
+        }
+        return targetObjectKey;
+    }
+
+    private void copyReplacingMetadata(String sourceObjectKey, String targetObjectKey, Map<String, String> metadata) throws Exception {
+        if (sourceObjectKey.equals(targetObjectKey)) {
+            String temporaryObjectKey = targetObjectKey + ".metadata-" + UUID.randomUUID();
+            copyReplacingMetadata(sourceObjectKey, temporaryObjectKey, metadata);
+            minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(sourceObjectKey).build());
+            copyReplacingMetadata(temporaryObjectKey, targetObjectKey, metadata);
+            minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(temporaryObjectKey).build());
+            return;
+        }
         minioClient.copyObject(CopyObjectArgs.builder()
                 .bucket(bucket)
-                .object(newObjectKey)
-                .source(CopySource.builder().bucket(bucket).object(currentObjectKey).build())
+                .object(targetObjectKey)
+                .source(CopySource.builder().bucket(bucket).object(sourceObjectKey).build())
+                .metadataDirective(Directive.REPLACE)
+                .userMetadata(metadata)
                 .build());
-        minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(currentObjectKey).build());
-        return newObjectKey;
     }
 
     private String buildObjectKey(LocalDate invoiceDate, String originalFilename, String existingSuffix) {
@@ -75,6 +95,36 @@ public class MinioStorageService {
             return parts[3];
         }
         return UUID.randomUUID() + "-" + safeName(originalFilename);
+    }
+
+    private Map<String, String> metadataFor(Invoice invoice) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        if (invoice == null) {
+            return metadata;
+        }
+        putMetadata(metadata, "invoice-id", invoice.id);
+        putMetadata(metadata, "original-filename", invoice.originalFilename);
+        putMetadata(metadata, "supplier-id", invoice.supplierId);
+        putMetadata(metadata, "supplier-name", invoice.supplierName);
+        putMetadata(metadata, "invoice-number", invoice.invoiceNumber);
+        putMetadata(metadata, "invoice-date", invoice.invoiceDate);
+        putMetadata(metadata, "amount-ht", invoice.amountHt);
+        putMetadata(metadata, "vat-amount", invoice.vatAmount);
+        putMetadata(metadata, "amount-ttc", invoice.amountTtc);
+        putMetadata(metadata, "currency", invoice.currency);
+        putMetadata(metadata, "comment", invoice.comment);
+        return metadata;
+    }
+
+    private void putMetadata(Map<String, String> metadata, String key, Object value) {
+        if (value != null) {
+            metadata.put(key, cleanMetadataValue(String.valueOf(value)));
+        }
+    }
+
+    private String cleanMetadataValue(String value) {
+        String cleaned = value.replaceAll("[\r\n]", " ").trim();
+        return cleaned.length() > 512 ? cleaned.substring(0, 512) : cleaned;
     }
 
     private String safeName(String originalFilename) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { FileText, Upload, Wand2 } from 'lucide-react'
+import { Calendar, FileText, Upload, Wand2 } from 'lucide-react'
 import './index.css'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -114,6 +114,8 @@ function App() {
     setForm(current => ({ ...current, [key]: value ?? '' }))
   }
 
+  const budgetYears = useMemo(() => Array.from({ length: 5 }, (_, index) => currentYear - 2 + index), [])
+  const invoicesForYear = useMemo(() => invoices.filter(invoice => !invoice.invoiceDate || new Date(invoice.invoiceDate).getFullYear() === fiscalYear), [invoices, fiscalYear])
   const cards = useMemo(() => dashboard ? [
     ['Budget annuel', dashboard.annualBudget],
     ['Consommé', dashboard.consumed],
@@ -125,7 +127,7 @@ function App() {
     <header className="flex items-center justify-between">
       <div>
         <h1 className="text-3xl font-bold">Provider Follow-up</h1>
-        <p className="text-slate-600">Suivi factures fournisseurs avec OCR IA local EasyOCR (fr + en).</p>
+        <p className="text-slate-600">Suivi factures fournisseurs avec OCR OCR.space et fallback local.</p>
       </div>
       <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded bg-blue-600 px-4 py-2 text-white">Nouvelle facture</button>
     </header>
@@ -143,11 +145,18 @@ function App() {
     </section>
 
     <section className="rounded-xl bg-white p-4 shadow">
-      <h2 className="mb-3 text-xl font-semibold">Année budgétaire</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <label className="text-sm font-medium">Année<input type="number" value={fiscalYear} onChange={e => setFiscalYear(Number(e.target.value || currentYear))} className="mt-1 w-full rounded border p-2"/></label>
-        <label className="text-sm font-medium">Budget annuel<input type="number" step="0.01" value={annualBudget} onChange={e => setAnnualBudget(Number(e.target.value || 0))} className="mt-1 w-full rounded border p-2"/></label>
-        <div className="rounded bg-slate-50 p-3 text-sm text-slate-600">Le dashboard filtre les factures dont la date est dans l’année budgétaire sélectionnée.</div>
+      <div className="mb-3 flex items-center gap-2 text-xl font-semibold"><Calendar size={20}/>Année budgétaire</div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="mb-2 text-sm text-slate-600">Sélectionnez l’année à piloter. Les indicateurs et tableaux se mettent à jour automatiquement.</p>
+          <div className="flex flex-wrap gap-2">
+            {budgetYears.map(year => <button key={year} type="button" onClick={() => setFiscalYear(year)} className={`rounded-full px-4 py-2 text-sm font-semibold ${fiscalYear === year ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{year}</button>)}
+            <input type="number" value={fiscalYear} onChange={e => setFiscalYear(Number(e.target.value || currentYear))} className="w-28 rounded-full border px-4 py-2 text-sm" aria-label="Année budgétaire personnalisée"/>
+          </div>
+        </div>
+        <label className="text-sm font-medium">Budget annuel
+          <input type="number" step="0.01" value={annualBudget} onChange={e => setAnnualBudget(Number(e.target.value || 0))} className="mt-1 w-full rounded border p-2 lg:w-56"/>
+        </label>
       </div>
     </section>
 
@@ -156,9 +165,18 @@ function App() {
     </section>
 
     <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <div className="rounded-xl bg-white p-4 shadow lg:col-span-1">
-        <h2 className="mb-3 flex items-center gap-2 text-xl font-semibold"><FileText size={20}/>Factures</h2>
-        <div className="space-y-2">{invoices.length === 0 && <p className="text-sm text-slate-500">Aucune facture enregistrée.</p>}{invoices.map(invoice => <button key={invoice.id} onClick={() => selectInvoice(invoice)} className={`w-full rounded border p-3 text-left hover:bg-slate-50 ${selected?.id === invoice.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}><div className="font-semibold">{invoice.supplierName || 'Sans fournisseur'} · {money(invoice.amountTtc)}</div><div className="text-sm text-slate-500">{invoice.invoiceNumber || 'N° ?'} · {invoice.invoiceDate || 'Date ?'}</div></button>)}</div>
+      <div className="overflow-hidden rounded-xl bg-white shadow lg:col-span-1">
+        <div className="border-b p-4">
+          <h2 className="flex items-center gap-2 text-xl font-semibold"><FileText size={20}/>Factures {fiscalYear}</h2>
+          <p className="text-sm text-slate-500">Cliquez une ligne pour modifier la facture.</p>
+        </div>
+        <div className="max-h-[520px] overflow-auto">
+          {invoicesForYear.length === 0 && <p className="p-4 text-sm text-slate-500">Aucune facture pour cette année.</p>}
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Fournisseur</th><th className="p-3 text-right">TTC</th></tr></thead>
+            <tbody>{invoicesForYear.map(invoice => <tr key={invoice.id} onClick={() => selectInvoice(invoice)} className={`cursor-pointer border-t hover:bg-blue-50 ${selected?.id === invoice.id ? 'bg-blue-50' : ''}`}><td className="p-3 whitespace-nowrap">{invoice.invoiceDate || '—'}</td><td className="p-3"><div className="font-semibold text-slate-900">{invoice.supplierName || 'Sans fournisseur'}</div><div className="text-xs text-slate-500">{invoice.invoiceNumber || 'N° ?'}</div></td><td className="p-3 text-right font-semibold">{money(invoice.amountTtc)}</td></tr>)}</tbody>
+          </table>
+        </div>
       </div>
 
       <form onSubmit={saveInvoice} className="rounded-xl bg-white p-4 shadow lg:col-span-2">
