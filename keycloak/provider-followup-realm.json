@@ -2,6 +2,7 @@
   "realm": "provider-followup",
   "enabled": true,
   "displayName": "Provider Follow-up",
+  "loginTheme": "provider-followup",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "users": [

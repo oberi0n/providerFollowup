@@ -31,6 +31,7 @@ Puis ouvrir :
 Docker Compose démarre un serveur Keycloak local et importe automatiquement le realm `provider-followup` depuis `keycloak/provider-followup-realm.json`. Un utilisateur de démonstration unique est créé pour le frontend, l’API backend et la console MinIO : `admin` / `admin`.
 
 - Le frontend React utilise le client public `provider-followup-frontend`, force la connexion Keycloak au chargement, puis envoie le token Bearer à chaque appel API.
+- Le frontend affiche aussi un bouton `MinIO` qui ouvre directement la console de stockage sur http://localhost:9001.
 - Le backend Quarkus protège les routes `/api/*` avec OIDC via le client confidentiel `provider-followup-backend`.
 - MinIO expose le bouton de connexion OpenID “Keycloak” et lit le claim `policy=consoleAdmin` émis pour l’utilisateur `admin`.
 - Keycloak publie `http://localhost:8081` comme URL frontend et garde un backchannel dynamique pour les appels internes Docker ; le bouton Keycloak de MinIO redirige donc le navigateur vers `localhost:8081` au lieu du nom de service Docker `keycloak:8080`.
@@ -97,7 +98,11 @@ Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque 
 
 ## Metabase
 
-Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `ProviderFollowup!2026`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes et total annuel.
+Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `ProviderFollowup!2026`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes, total annuel et un diagramme de progression cumulée par année budgétaire sur les 12 mois de janvier à décembre.
+
+## Thème de connexion
+
+Keycloak utilise le thème `provider-followup` monté depuis `keycloak/themes`. La page de connexion affiche uniquement le nom de l’application, le champ utilisateur, le champ mot de passe et un bouton de connexion, avec un fond cohérent avec l’interface Provider Follow-up.
 
 ## OCR OCR.space
 

@@ -56,10 +56,11 @@ DASH_ID=$(printf '%s' "$DASH_RESPONSE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p
 create_card() {
   NAME="$1"
   SQL="$2"
+  DISPLAY="${3:-table}"
   CARD_RESPONSE=$(curl -fsS -X POST "${METABASE_URL}/api/card" \
     -H "Content-Type: application/json" \
     -H "X-Metabase-Session: ${SESSION_ID}" \
-    -d "{\"name\":\"${NAME}\",\"dataset_query\":{\"database\":${DB_ID},\"type\":\"native\",\"native\":{\"query\":\"${SQL}\"}},\"display\":\"table\",\"visualization_settings\":{}}")
+    -d "{\"name\":\"${NAME}\",\"dataset_query\":{\"database\":${DB_ID},\"type\":\"native\",\"native\":{\"query\":\"${SQL}\"}},\"display\":\"${DISPLAY}\",\"visualization_settings\":{}}")
   CARD_ID=$(printf '%s' "$CARD_RESPONSE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
   if [ -n "$CARD_ID" ] && [ -n "$DASH_ID" ]; then
     curl -fsS -X POST "${METABASE_URL}/api/dashboard/${DASH_ID}/cards" \
@@ -73,5 +74,6 @@ create_card "Total TTC par mois" "select to_char(invoice_date, 'YYYY-MM') as moi
 create_card "Dépenses par fournisseur" "select coalesce(supplier_name, 'Fournisseur inconnu') as fournisseur, sum(amount_ttc) as total_ttc from invoices group by 1 order by 2 desc"
 create_card "Factures récentes" "select invoice_date, supplier_name, invoice_number, amount_ttc, currency from invoices order by created_at desc limit 25"
 create_card "Total année courante" "select extract(year from invoice_date) as annee, sum(amount_ttc) as total_ttc from invoices where invoice_date is not null group by 1 order by 1 desc"
+create_card "Progression cumulée par année budgétaire" "with years as (select generate_series(extract(year from now())::int - 2, extract(year from now())::int + 2) as annee_budgetaire), months as (select generate_series(1, 12) as mois_num), monthly as (select extract(year from invoice_date)::int as annee_budgetaire, extract(month from invoice_date)::int as mois_num, sum(amount_ttc) as total_ttc from invoices where invoice_date is not null group by 1, 2) select y.annee_budgetaire, m.mois_num, to_char(make_date(y.annee_budgetaire, m.mois_num, 1), 'TMMonth') as mois, sum(coalesce(monthly.total_ttc, 0)) over (partition by y.annee_budgetaire order by m.mois_num rows between unbounded preceding and current row) as cumul_ttc from years y cross join months m left join monthly on monthly.annee_budgetaire = y.annee_budgetaire and monthly.mois_num = m.mois_num order by y.annee_budgetaire, m.mois_num" "line"
 
 echo "Metabase configured: ${METABASE_URL} (${ADMIN_EMAIL} / ${ADMIN_PASSWORD})"

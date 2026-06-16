@@ -57,6 +57,7 @@ services:
       - "8081:8080"
     volumes:
       - ./keycloak/provider-followup-realm.json:/opt/keycloak/data/import/provider-followup-realm.json:ro
+      - ./keycloak/themes:/opt/keycloak/themes:ro
       - keycloak-data:/opt/keycloak/data
     healthcheck:
       test: ["CMD-SHELL", "bash -ec \"exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /realms/provider-followup/.well-known/openid-configuration HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q 'provider-followup'\""]
@@ -118,6 +119,7 @@ services:
         VITE_KEYCLOAK_URL: http://localhost:8081
         VITE_KEYCLOAK_REALM: provider-followup
         VITE_KEYCLOAK_CLIENT_ID: provider-followup-frontend
+        VITE_MINIO_CONSOLE_URL: http://localhost:9001
     depends_on:
       - backend
     ports:

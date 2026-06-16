@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Keycloak from 'keycloak-js'
-import { Calendar, FileText, Upload, Wand2 } from 'lucide-react'
+import { Calendar, Database, FileText, Upload, Wand2 } from 'lucide-react'
 import './index.css'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const MINIO_CONSOLE_URL = import.meta.env.VITE_MINIO_CONSOLE_URL || 'http://localhost:9001'
 const keycloak = new Keycloak({
   url: import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8081',
   realm: import.meta.env.VITE_KEYCLOAK_REALM || 'provider-followup',
@@ -171,6 +172,7 @@ function App() {
       <div className="flex items-center gap-3">
         <span className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-700">Connecté : {userProfile?.username || userProfile?.email || 'admin'}</span>
         <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded bg-blue-600 px-4 py-2 text-white">Nouvelle facture</button>
+        <a href={MINIO_CONSOLE_URL} target="_blank" rel="noreferrer" className="rounded border border-blue-200 bg-blue-50 px-4 py-2 text-blue-700"><Database className="inline" size={16}/> MinIO</a>
         <button onClick={() => keycloak.logout({ redirectUri: window.location.origin })} className="rounded border border-slate-300 px-4 py-2 text-slate-700">Déconnexion</button>
       </div>
     </header>
