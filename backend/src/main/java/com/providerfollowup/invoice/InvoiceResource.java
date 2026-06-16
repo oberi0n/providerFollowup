@@ -14,6 +14,7 @@ import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 
 import java.nio.file.Files;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -48,9 +49,10 @@ public class InvoiceResource {
     @Path("/{id}")
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
-    public InvoiceResponse update(@PathParam("id") Long id, InvoiceRequest request) {
+    public InvoiceResponse update(@PathParam("id") Long id, InvoiceRequest request) throws Exception {
         Invoice invoice = findInvoice(id);
         applyValidatedFields(invoice, request);
+        relocateStoredFile(invoice);
         return InvoiceResponse.from(invoice);
     }
 
@@ -81,6 +83,10 @@ public class InvoiceResource {
         invoice.ocrRawText = result.rawText();
         invoice.ocrSuggestionsJson = objectMapper.writeValueAsString(result.suggestions());
         invoice.ocrProcessedAt = OffsetDateTime.now();
+        LocalDate suggestedDate = parseSuggestedInvoiceDate(result);
+        invoice.fileObjectKey = storageService.moveToInvoiceMonth(invoice.fileObjectKey,
+                invoice.invoiceDate == null ? suggestedDate : invoice.invoiceDate,
+                invoice.originalFilename);
         // Suggestions are intentionally not copied into validated invoice fields.
         return toOcrResponse(invoice, result.confidence());
     }
@@ -95,6 +101,21 @@ public class InvoiceResource {
         Invoice invoice = Invoice.findById(id);
         if (invoice == null) throw new NotFoundException("Facture introuvable: " + id);
         return invoice;
+    }
+
+    private void relocateStoredFile(Invoice invoice) throws Exception {
+        invoice.fileObjectKey = storageService.moveToInvoiceMonth(invoice.fileObjectKey, invoice.invoiceDate, invoice.originalFilename);
+    }
+
+    private LocalDate parseSuggestedInvoiceDate(OcrResult result) {
+        if (result == null || result.suggestions() == null || result.suggestions().invoiceDate() == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(result.suggestions().invoiceDate());
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private void applyValidatedFields(Invoice invoice, InvoiceRequest request) {
