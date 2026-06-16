@@ -57,10 +57,10 @@ function App() {
     setMessage('')
   }
 
-  async function persistInvoice(invoiceForm = form) {
+  async function persistInvoice(invoiceForm = form, invoiceId = selected?.id) {
     const payload = normalizeForm(invoiceForm)
-    const res = await fetch(selected?.id ? `${API}/api/invoices/${selected.id}` : `${API}/api/invoices`, {
-      method: selected?.id ? 'PUT' : 'POST',
+    const res = await fetch(invoiceId ? `${API}/api/invoices/${invoiceId}` : `${API}/api/invoices`, {
+      method: invoiceId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
@@ -99,7 +99,9 @@ function App() {
 
       setOcrResult(result)
       setForm(prefilled)
-      setMessage('OCR terminé : les champs vides ont été préremplis. Vérifiez/corrigez puis cliquez sur “Valider / enregistrer”.')
+      const savedWithOcrDate = await persistInvoice(prefilled, invoice.id)
+      setSelected(savedWithOcrDate)
+      setMessage('OCR terminé : les champs vides ont été préremplis et le fichier a été rangé selon la date de facture détectée. Vérifiez/corrigez puis cliquez sur “Valider / enregistrer”.')
       await refresh()
     } catch (error) {
       setMessage(`Erreur OCR : ${error.message}`)

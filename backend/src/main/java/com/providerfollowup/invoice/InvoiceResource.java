@@ -84,10 +84,11 @@ public class InvoiceResource {
         invoice.ocrSuggestionsJson = objectMapper.writeValueAsString(result.suggestions());
         invoice.ocrProcessedAt = OffsetDateTime.now();
         LocalDate suggestedDate = parseSuggestedInvoiceDate(result);
-        invoice.fileObjectKey = storageService.moveToInvoiceMonth(invoice.fileObjectKey,
-                invoice.invoiceDate == null ? suggestedDate : invoice.invoiceDate,
-                invoice.originalFilename);
-        // Suggestions are intentionally not copied into validated invoice fields.
+        if (invoice.invoiceDate == null && suggestedDate != null) {
+            invoice.invoiceDate = suggestedDate;
+        }
+        invoice.fileObjectKey = storageService.moveToInvoiceMonth(invoice.fileObjectKey, invoice.invoiceDate, invoice.originalFilename);
+        // OCR date is only applied when no invoice date existed yet; already validated dates are never overwritten.
         return toOcrResponse(invoice, result.confidence());
     }
 
