@@ -50,7 +50,7 @@ if [ -z "$DB_ID" ]; then
   DB_RESPONSE=$(curl -fsS -X POST "${METABASE_URL}/api/database" \
     -H "Content-Type: application/json" \
     -H "X-Metabase-Session: ${SESSION_ID}" \
-    -d "{\"engine\":\"postgres\",\"name\":\"Provider Follow-up PostgreSQL\",\"details\":{\"host\":\"${DB_HOST}\",\"port\":${DB_PORT},\"dbname\":\"${DB_NAME}\",\"user\":\"${DB_USER}\",\"password\":\"${DB_PASSWORD}\",\"ssl\":false}}")
+    -d "{\"engine\":\"postgres\",\"name\":\"Provider Follow-up PostgreSQL\",\"details\":{\"host\":\"${DB_HOST}\",\"port\":${DB_PORT},\"dbname\":\"${DB_NAME}\",\"user\":\"${DB_USER}\",\"password\":\"${DB_PASSWORD}\",\"ssl\":false,\"ssl-mode\":\"disable\",\"additional-options\":\"sslmode=disable\"}}")
   DB_ID=$(printf '%s' "$DB_RESPONSE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
 fi
 
@@ -59,6 +59,8 @@ DASH_RESPONSE=$(curl -fsS -X POST "${METABASE_URL}/api/dashboard" \
   -H "X-Metabase-Session: ${SESSION_ID}" \
   -d '{"name":"Provider Follow-up - Budget invoices","description":"Dashboard auto-configured by docker compose."}')
 DASH_ID=$(printf '%s' "$DASH_RESPONSE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+DASH_CARDS=""
+CARD_INDEX=0
 
 create_card() {
   NAME="$1"
@@ -70,10 +72,18 @@ create_card() {
     -d "{\"name\":\"${NAME}\",\"dataset_query\":{\"database\":${DB_ID},\"type\":\"native\",\"native\":{\"query\":\"${SQL}\"}},\"display\":\"${DISPLAY}\",\"visualization_settings\":{}}")
   CARD_ID=$(printf '%s' "$CARD_RESPONSE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
   if [ -n "$CARD_ID" ] && [ -n "$DASH_ID" ]; then
-    curl -fsS -X POST "${METABASE_URL}/api/dashboard/${DASH_ID}/cards" \
+    ROW=$((CARD_INDEX * 4))
+    DASHCARD="{\"id\":-$((CARD_INDEX + 1)),\"card_id\":${CARD_ID},\"row\":${ROW},\"col\":0,\"size_x\":24,\"size_y\":4,\"series\":[],\"visualization_settings\":{},\"parameter_mappings\":[]}"
+    if [ -z "$DASH_CARDS" ]; then
+      DASH_CARDS="$DASHCARD"
+    else
+      DASH_CARDS="${DASH_CARDS},${DASHCARD}"
+    fi
+    CARD_INDEX=$((CARD_INDEX + 1))
+    curl -fsS -X PUT "${METABASE_URL}/api/dashboard/${DASH_ID}/cards" \
       -H "Content-Type: application/json" \
       -H "X-Metabase-Session: ${SESSION_ID}" \
-      -d "{\"cardId\":${CARD_ID}}" >/dev/null || true
+      -d "{\"cards\":[${DASH_CARDS}]}" >/dev/null || true
   fi
 }
 
