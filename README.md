@@ -33,6 +33,7 @@ Docker Compose démarre un serveur Keycloak local et importe automatiquement le 
 - Le frontend React utilise le client public `provider-followup-frontend`, force la connexion Keycloak au chargement, puis envoie le token Bearer à chaque appel API.
 - Le backend Quarkus protège les routes `/api/*` avec OIDC via le client confidentiel `provider-followup-backend`.
 - MinIO expose le bouton de connexion OpenID “Keycloak” et lit le claim `policy=consoleAdmin` émis pour l’utilisateur `admin`.
+- Keycloak publie `http://localhost:8081` comme URL frontend et garde un backchannel dynamique pour les appels internes Docker ; le bouton Keycloak de MinIO redirige donc le navigateur vers `localhost:8081` au lieu du nom de service Docker `keycloak:8080`.
 - Metabase Community Edition ne fournit pas de SSO Keycloak OpenID Connect natif sans extension/édition payante ; il conserve donc son compte local auto-configuré indiqué ci-dessus.
 
 ## Workflow OCR
