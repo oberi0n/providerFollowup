@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Keycloak from 'keycloak-js'
-import { Calendar, Database, FileText, Upload, Wand2 } from 'lucide-react'
+import { BarChart3, Calendar, Database, FileText, Upload, Wand2 } from 'lucide-react'
 import './index.css'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 const MINIO_CONSOLE_URL = import.meta.env.VITE_MINIO_CONSOLE_URL || 'http://localhost:9001'
+const METABASE_URL = import.meta.env.VITE_METABASE_URL || 'http://localhost:3001'
 const keycloak = new Keycloak({
   url: import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8081',
   realm: import.meta.env.VITE_KEYCLOAK_REALM || 'provider-followup',
@@ -168,36 +169,48 @@ function App() {
   }
 
   return <main className="mx-auto max-w-7xl p-6 space-y-6">
-    <header className="flex items-center justify-between">
-      <div>
-        <h1 className="text-3xl font-bold">Provider Follow-up</h1>
-        <p className="text-slate-600">Suivi factures fournisseurs avec OCR OCR.space et fallback local.</p>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-700">Connecté : {userProfile?.username || userProfile?.email || 'admin'}</span>
-        <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded bg-blue-600 px-4 py-2 text-white">Nouvelle facture</button>
-        <a href={MINIO_CONSOLE_URL} target="_blank" rel="noreferrer" className="rounded border border-blue-200 bg-blue-50 px-4 py-2 text-blue-700"><Database className="inline" size={16}/> MinIO</a>
-        <button onClick={() => keycloak.logout({ redirectUri: window.location.origin })} className="rounded border border-slate-300 px-4 py-2 text-slate-700">Déconnexion</button>
+    <header className="rounded-2xl bg-white p-5 shadow">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Provider Follow-up</h1>
+          <p className="text-slate-600">Suivi factures fournisseurs avec OCR OCR.space et fallback local.</p>
+        </div>
+        <nav className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2">
+          <span className="rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">Connecté : {userProfile?.username || userProfile?.email || 'admin'}</span>
+          <a href={MINIO_CONSOLE_URL} target="_blank" rel="noreferrer" className="rounded-lg px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"><Database className="inline" size={16}/> MinIO</a>
+          <a href={METABASE_URL} target="_blank" rel="noreferrer" className="rounded-lg px-3 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50"><BarChart3 className="inline" size={16}/> Metabase</a>
+          <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Nouvelle facture</button>
+          <button onClick={() => keycloak.logout({ redirectUri: window.location.origin })} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Déconnexion</button>
+        </nav>
       </div>
     </header>
 
     {message && <div className="rounded border border-blue-200 bg-blue-50 p-3 text-blue-900">{message}</div>}
 
-    <section className="rounded-xl bg-white p-4 shadow">
-      <h2 className="mb-2 flex items-center gap-2 text-xl font-semibold"><Upload size={20}/>OCR facture</h2>
-      <p className="mb-4 text-sm text-slate-600">Étape principale : choisissez une image/PDF, lancez l’OCR, puis le formulaire en dessous sera prérempli automatiquement.</p>
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <input type="file" accept="image/png,image/jpeg,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="rounded border p-2"/>
-        <button type="button" disabled={loadingOcr} onClick={uploadAndOcr} className="rounded bg-purple-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-purple-300"><Wand2 className="inline" size={16}/> {loadingOcr ? 'OCR en cours…' : 'Lancer OCR et préremplir'}</button>
+    <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="rounded-xl bg-white p-4 shadow lg:col-span-1">
+        <h2 className="mb-2 flex items-center gap-2 text-xl font-semibold"><Upload size={20}/>OCR facture</h2>
+        <p className="mb-4 text-sm text-slate-600">1. Sélectionnez l’image/PDF, lancez l’OCR, puis validez les champs du formulaire à droite.</p>
+        <div className="space-y-3">
+          <input type="file" accept="image/png,image/jpeg,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="w-full rounded border p-2"/>
+          <button type="button" disabled={loadingOcr} onClick={uploadAndOcr} className="w-full rounded bg-purple-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-purple-300"><Wand2 className="inline" size={16}/> {loadingOcr ? 'OCR en cours…' : 'Lancer OCR et préremplir'}</button>
+        </div>
+        {ocrResult && <OcrPanel result={ocrResult} applySuggestion={applySuggestion}/>}
       </div>
-      {ocrResult && <OcrPanel result={ocrResult} applySuggestion={applySuggestion}/>}
+
+      <form onSubmit={saveInvoice} className="rounded-xl bg-white p-4 shadow lg:col-span-2">
+        <h2 className="mb-2 text-xl font-semibold">{selected ? `Facture #${selected.id}` : 'Formulaire facture'}</h2>
+        <p className="mb-4 text-sm text-slate-600">2. Les champs fournisseur, date, montant TTC et CAPEX/OPEX sont obligatoires avant validation.</p>
+        <InvoiceFields form={form} setForm={setForm}/>
+        <div className="mt-4 flex gap-3"><button className="rounded bg-emerald-600 px-4 py-2 text-white">Valider / enregistrer</button></div>
+      </form>
     </section>
 
     <section className="rounded-xl bg-white p-4 shadow">
       <div className="mb-3 flex items-center gap-2 text-xl font-semibold"><Calendar size={20}/>Année budgétaire</div>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="mb-2 text-sm text-slate-600">Sélectionnez l’année à piloter. Les indicateurs et tableaux se mettent à jour automatiquement.</p>
+          <p className="mb-2 text-sm text-slate-600">3. Paramétrez les lignes OPEX/CAPEX, puis consultez la synthèse globale.</p>
           <div className="flex flex-wrap gap-2">
             {budgetYears.map(year => <button key={year} type="button" onClick={() => setFiscalYear(year)} className={`rounded-full px-4 py-2 text-sm font-semibold ${fiscalYear === year ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{year}</button>)}
             <input type="number" value={fiscalYear} onChange={e => setFiscalYear(Number(e.target.value || currentYear))} className="w-28 rounded-full border px-4 py-2 text-sm" aria-label="Année budgétaire personnalisée"/>
@@ -223,33 +236,25 @@ function App() {
       </div>
     </section>}
 
-    <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
+    <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
       {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-white p-4 shadow"><p className="text-sm text-slate-500">{label}</p><p className="text-2xl font-bold">{money(value)}</p></div>)}
     </section>
 
-    <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <div className="overflow-hidden rounded-xl bg-white shadow lg:col-span-1">
-        <div className="border-b p-4">
-          <h2 className="flex items-center gap-2 text-xl font-semibold"><FileText size={20}/>Factures {fiscalYear}</h2>
-          <p className="text-sm text-slate-500">Cliquez une ligne pour modifier la facture.</p>
-        </div>
-        <div className="max-h-[520px] overflow-auto">
-          {invoicesForYear.length === 0 && <p className="p-4 text-sm text-slate-500">Aucune facture pour cette année.</p>}
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Fournisseur</th><th className="p-3">Budget</th><th className="p-3 text-right">TTC</th></tr></thead>
-            <tbody>{invoicesForYear.map(invoice => <tr key={invoice.id} onClick={() => selectInvoice(invoice)} className={`cursor-pointer border-t hover:bg-blue-50 ${selected?.id === invoice.id ? 'bg-blue-50' : ''}`}><td className="p-3 whitespace-nowrap">{invoice.invoiceDate || '—'}</td><td className="p-3"><div className="font-semibold text-slate-900">{invoice.supplierName || 'Sans fournisseur'}</div><div className="text-xs text-slate-500">{invoice.invoiceNumber || 'N° ?'}</div></td><td className="p-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold">{invoice.budgetType || '—'}</span></td><td className="p-3 text-right font-semibold">{money(invoice.amountTtc)}</td></tr>)}</tbody>
-          </table>
-        </div>
-      </div>
-
-      <form onSubmit={saveInvoice} className="rounded-xl bg-white p-4 shadow lg:col-span-2">
-        <h2 className="mb-4 text-xl font-semibold">{selected ? `Facture #${selected.id}` : 'Formulaire facture'}</h2>
-        <InvoiceFields form={form} setForm={setForm}/>
-        <div className="mt-4 flex gap-3"><button className="rounded bg-emerald-600 px-4 py-2 text-white">Valider / enregistrer</button></div>
-      </form>
-    </section>
-
     {dashboard && <section className="grid grid-cols-1 gap-4 md:grid-cols-2"><Chart title="Par mois" data={dashboard.expensesByMonth} moneyValues/><Chart title="Par fournisseur" data={dashboard.expensesBySupplier} moneyValues/></section>}
+
+    <section className="overflow-hidden rounded-xl bg-white shadow">
+      <div className="border-b p-4">
+        <h2 className="flex items-center gap-2 text-xl font-semibold"><FileText size={20}/>Factures {fiscalYear}</h2>
+        <p className="text-sm text-slate-500">4. Liste des factures de l’année sélectionnée. Cliquez une ligne pour la reprendre dans le formulaire.</p>
+      </div>
+      <div className="max-h-[520px] overflow-auto">
+        {invoicesForYear.length === 0 && <p className="p-4 text-sm text-slate-500">Aucune facture pour cette année.</p>}
+        <table className="w-full text-left text-sm">
+          <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Fournisseur</th><th className="p-3">Budget</th><th className="p-3 text-right">TTC</th></tr></thead>
+          <tbody>{invoicesForYear.map(invoice => <tr key={invoice.id} onClick={() => selectInvoice(invoice)} className={`cursor-pointer border-t hover:bg-blue-50 ${selected?.id === invoice.id ? 'bg-blue-50' : ''}`}><td className="p-3 whitespace-nowrap">{invoice.invoiceDate || '—'}</td><td className="p-3"><div className="font-semibold text-slate-900">{invoice.supplierName || 'Sans fournisseur'}</div><div className="text-xs text-slate-500">{invoice.invoiceNumber || 'N° ?'}</div></td><td className="p-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold">{invoice.budgetType || '—'}</span></td><td className="p-3 text-right font-semibold">{money(invoice.amountTtc)}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </section>
   </main>
 }
 

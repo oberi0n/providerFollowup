@@ -31,7 +31,7 @@ Puis ouvrir :
 Docker Compose démarre un serveur Keycloak local et importe automatiquement le realm `provider-followup` depuis `keycloak/provider-followup-realm.json`. Un utilisateur de démonstration unique est créé pour le frontend, l’API backend et la console MinIO : `admin` / `admin`.
 
 - Le frontend React utilise le client public `provider-followup-frontend`, force la connexion Keycloak au chargement, puis envoie le token Bearer à chaque appel API.
-- Le frontend affiche aussi un bouton `MinIO` qui ouvre directement la console de stockage sur http://localhost:9001.
+- Le frontend affiche un menu d’accès rapide avec liens vers MinIO (http://localhost:9001) et Metabase (http://localhost:3001).
 - Le backend Quarkus protège les routes `/api/*` avec OIDC via le client confidentiel `provider-followup-backend`.
 - MinIO expose le bouton de connexion OpenID “Keycloak” et lit le claim `policy=consoleAdmin` émis pour l’utilisateur `admin`.
 - Keycloak publie `http://localhost:8081` comme URL frontend et garde un backchannel dynamique pour les appels internes Docker ; le bouton Keycloak de MinIO redirige donc le navigateur vers `localhost:8081` au lieu du nom de service Docker `keycloak:8080`.
@@ -50,6 +50,10 @@ Docker Compose démarre un serveur Keycloak local et importe automatiquement le 
 9. Les champs validés et le résultat OCR brut sont conservés en base, et les champs principaux de la facture sont synchronisés dans les métadonnées de l’objet MinIO.
 
 > Important : l'OCR ne remplace jamais automatiquement les champs validés d'une facture. Les suggestions sont stockées séparément dans `ocrSuggestionsJson`.
+
+## Organisation de l'écran principal
+
+L'écran principal est organisé dans l'ordre d'usage : sélection du fichier et formulaire facture en premier, paramétrage budgétaire et synthèses ensuite, puis liste des factures de l'année sélectionnée en fin de page.
 
 ## Endpoints principaux
 

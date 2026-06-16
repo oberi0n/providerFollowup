@@ -120,6 +120,7 @@ services:
         VITE_KEYCLOAK_REALM: provider-followup
         VITE_KEYCLOAK_CLIENT_ID: provider-followup-frontend
         VITE_MINIO_CONSOLE_URL: http://localhost:9001
+        VITE_METABASE_URL: http://localhost:3001
     depends_on:
       - backend
     ports:
