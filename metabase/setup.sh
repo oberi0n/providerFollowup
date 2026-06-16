@@ -22,8 +22,15 @@ if [ -n "$SETUP_TOKEN" ]; then
   echo "Initialising Metabase admin and Provider Follow-up database..."
   SETUP_RESPONSE=$(curl -fsS -X POST "${METABASE_URL}/api/setup" \
     -H "Content-Type: application/json" \
-    -d "{\"token\":\"${SETUP_TOKEN}\",\"user\":{\"first_name\":\"Provider\",\"last_name\":\"Admin\",\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"},\"prefs\":{\"site_name\":\"Provider Follow-up\",\"site_locale\":\"fr\"},\"database\":null}")
+    -d "{\"token\":\"${SETUP_TOKEN}\",\"user\":{\"first_name\":\"Provider\",\"last_name\":\"Admin\",\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"},\"prefs\":{\"site_name\":\"Provider Follow-up\",\"site_locale\":\"fr\"},\"database\":null}" || true)
   SESSION_ID=$(printf '%s' "$SETUP_RESPONSE" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  if [ -z "$SESSION_ID" ]; then
+    echo "Metabase setup endpoint refused initialisation; trying to log in with the existing admin."
+    LOGIN_RESPONSE=$(curl -fsS -X POST "${METABASE_URL}/api/session" \
+      -H "Content-Type: application/json" \
+      -d "{\"username\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" || true)
+    SESSION_ID=$(printf '%s' "$LOGIN_RESPONSE" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  fi
 else
   echo "Metabase is already initialised; logging in."
   LOGIN_RESPONSE=$(curl -fsS -X POST "${METABASE_URL}/api/session" \
