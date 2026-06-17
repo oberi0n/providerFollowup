@@ -81,7 +81,10 @@ services:
       OCR_AI_PROVIDER: ollama
       OCR_AI_URL: http://ollama:11434/api/generate
       OCR_AI_MODEL: qwen2.5:0.5b
-      OCR_AI_TIMEOUT: 12
+      OCR_AI_TIMEOUT: 45
+      OCR_AI_MAX_CHARS: 6000
+      OCR_AI_NUM_CTX: 2048
+      OCR_AI_NUM_PREDICT: 256
     depends_on:
       minio:
         condition: service_healthy

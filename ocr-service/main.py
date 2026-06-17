@@ -31,8 +31,10 @@ OCR_AI_ENABLED = os.getenv("OCR_AI_ENABLED", "true").lower() == "true"
 OCR_AI_PROVIDER = os.getenv("OCR_AI_PROVIDER", "ollama").lower()
 OCR_AI_URL = os.getenv("OCR_AI_URL", "http://localhost:11434/api/generate")
 OCR_AI_MODEL = os.getenv("OCR_AI_MODEL", "llama3.2:3b")
-OCR_AI_TIMEOUT = int(os.getenv("OCR_AI_TIMEOUT", "12"))
-OCR_AI_MAX_CHARS = int(os.getenv("OCR_AI_MAX_CHARS", "12000"))
+OCR_AI_TIMEOUT = int(os.getenv("OCR_AI_TIMEOUT", "45"))
+OCR_AI_MAX_CHARS = int(os.getenv("OCR_AI_MAX_CHARS", "6000"))
+OCR_AI_NUM_CTX = int(os.getenv("OCR_AI_NUM_CTX", "2048"))
+OCR_AI_NUM_PREDICT = int(os.getenv("OCR_AI_NUM_PREDICT", "256"))
 
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=MINIO_SECURE)
 
@@ -108,7 +110,7 @@ def interpret_with_ollama(text: str, regex_suggestions: Suggestions) -> Optional
                 "prompt": prompt,
                 "stream": False,
                 "format": "json",
-                "options": {"temperature": 0.0},
+                "options": {"temperature": 0.0, "num_ctx": OCR_AI_NUM_CTX, "num_predict": OCR_AI_NUM_PREDICT},
             },
             timeout=OCR_AI_TIMEOUT,
         )
