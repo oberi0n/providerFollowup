@@ -80,13 +80,13 @@ services:
       OCR_AI_ENABLED: "true"
       OCR_AI_PROVIDER: ollama
       OCR_AI_URL: http://ollama:11434/api/generate
-      OCR_AI_MODEL: llama3.2:3b
+      OCR_AI_MODEL: qwen2.5:0.5b
       OCR_AI_TIMEOUT: 12
     depends_on:
       minio:
         condition: service_healthy
-      ollama:
-        condition: service_started
+      ollama-model-loader:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
 
@@ -96,6 +96,20 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+
+  ollama-model-loader:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: qwen2.5:0.5b
+      OLLAMA_WAIT_SECONDS: 180
+    volumes:
+      - ./ollama/load-model.sh:/load-model.sh:ro
+    depends_on:
+      ollama:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/load-model.sh"]
+    restart: "no"
 
   backend:
     build: ./backend

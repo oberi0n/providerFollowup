@@ -23,7 +23,7 @@ Puis ouvrir :
 - Backend API : http://localhost:8080
 - Keycloak : http://localhost:8081 (`admin` / `admin`)
 - OCR healthcheck : http://localhost:8000/health
-- Ollama local : http://localhost:11434
+- Ollama local : http://localhost:11434 (modèle léger `qwen2.5:0.5b` chargé automatiquement au démarrage)
 - Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `ProviderFollowup!2026`)
 - Console MinIO : http://localhost:9001 (bouton Keycloak, `admin` / `admin`; compte technique root `minioadmin` / `minioadmin`)
 
@@ -115,12 +115,8 @@ Keycloak utilise le thème `provider-followup` monté depuis `keycloak/themes`. 
 
 L’OCR principal utilise OCR.space via `https://api.ocr.space/parse/image`. La clé API est fournie au conteneur avec `OCR_SPACE_API_KEY`; les langues configurées par défaut sont `fre,eng` et le moteur OCR.space `2`. Tesseract reste disponible comme fallback local si OCR.space ne renvoie aucun texte.
 
-Après extraction du texte brut, le service OCR peut utiliser Ollama en local pour mieux interpréter le fournisseur, le numéro de facture, la date, les montants et la devise. Cette couche IA est configurée par `OCR_AI_ENABLED`, `OCR_AI_PROVIDER`, `OCR_AI_URL`, `OCR_AI_MODEL` et `OCR_AI_TIMEOUT`. Par défaut, Docker Compose pointe vers le service `ollama` avec le modèle `llama3.2:3b`.
+Après extraction du texte brut, le service OCR peut utiliser Ollama en local pour mieux interpréter le fournisseur, le numéro de facture, la date, les montants et la devise. Cette couche IA est configurée par `OCR_AI_ENABLED`, `OCR_AI_PROVIDER`, `OCR_AI_URL`, `OCR_AI_MODEL` et `OCR_AI_TIMEOUT`. Par défaut, Docker Compose pointe vers le service `ollama` avec le modèle léger `qwen2.5:0.5b`, suffisant pour transformer du texte OCR en JSON structuré.
 
-Pour activer réellement l’interprétation IA après le premier démarrage, télécharger le modèle localement :
+Le service `ollama-model-loader` télécharge automatiquement ce modèle au démarrage avec `ollama pull qwen2.5:0.5b` et `ocr-service` attend la fin de ce chargement avant de démarrer. Le modèle est conservé dans le volume Docker `ollama-data`, donc le téléchargement ne se répète pas à chaque redémarrage.
 
-```bash
-docker exec -it providerfollowup-ollama-1 ollama pull llama3.2:3b
-```
-
-Si le modèle n’est pas encore téléchargé, si Ollama est indisponible ou si la réponse IA n’est pas un JSON valide, l’application continue de fonctionner avec les heuristiques regex déterministes. Cette amélioration ne dépend donc d’aucun service IA cloud payant.
+Si Ollama est indisponible ou si la réponse IA n’est pas un JSON valide, l’application continue de fonctionner avec les heuristiques regex déterministes. Cette amélioration ne dépend donc d’aucun service IA cloud payant.
