@@ -77,11 +77,25 @@ services:
       OCR_SPACE_LANGUAGES: fre,eng
       OCR_SPACE_ENGINE: 2
       TESSERACT_LANGS: fra+eng
+      OCR_AI_ENABLED: "true"
+      OCR_AI_PROVIDER: ollama
+      OCR_AI_URL: http://ollama:11434/api/generate
+      OCR_AI_MODEL: llama3.2:3b
+      OCR_AI_TIMEOUT: 12
     depends_on:
       minio:
         condition: service_healthy
+      ollama:
+        condition: service_started
     ports:
       - "8000:8000"
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
 
   backend:
     build: ./backend
@@ -163,3 +177,4 @@ volumes:
   minio-data:
   metabase-data:
   keycloak-data:
+  ollama-data:

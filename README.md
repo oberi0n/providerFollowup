@@ -1,6 +1,6 @@
 # Provider Follow-up
 
-Application de suivi des factures fournisseurs avec OCR OCR.space et fallback local.
+Application de suivi des factures fournisseurs avec OCR OCR.space, fallback local et interprétation IA locale optionnelle.
 
 ## Stack
 
@@ -8,7 +8,7 @@ Application de suivi des factures fournisseurs avec OCR OCR.space et fallback lo
 - Backend : Quarkus REST API
 - Base : PostgreSQL
 - Stockage fichiers : MinIO
-- OCR : FastAPI + OCR.space API + fallback Tesseract local (`fra+eng`) + Poppler/pdf2image
+- OCR : FastAPI + OCR.space API + fallback Tesseract local (`fra+eng`) + Poppler/pdf2image + interprétation IA locale via Ollama
 - Déploiement : Docker Compose complet
 
 ## Lancement
@@ -23,6 +23,7 @@ Puis ouvrir :
 - Backend API : http://localhost:8080
 - Keycloak : http://localhost:8081 (`admin` / `admin`)
 - OCR healthcheck : http://localhost:8000/health
+- Ollama local : http://localhost:11434
 - Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `ProviderFollowup!2026`)
 - Console MinIO : http://localhost:9001 (bouton Keycloak, `admin` / `admin`; compte technique root `minioadmin` / `minioadmin`)
 
@@ -44,7 +45,7 @@ Docker Compose démarre un serveur Keycloak local et importe automatiquement le 
 3. Le backend stocke le fichier dans le bucket MinIO `invoices`, sous `invoices/YYYY/MM/<uuid>-<nom-fichier>` selon la date de facture si elle est renseignée, sinon selon le mois courant.
 4. Le backend appelle le service interne `ocr-service` via `POST /ocr/extract`.
 5. Le service OCR lit le fichier depuis MinIO, envoie le fichier à OCR.space avec la clé configurée, puis utilise Tesseract local comme fallback si OCR.space ne renvoie aucun texte.
-6. Des heuristiques post-OCR proposent fournisseur, numéro, date, montants HT/TVA/TTC et devise.
+6. Une couche d’interprétation IA locale via Ollama analyse le texte OCR brut et renvoie les champs structurés ; si Ollama ou le modèle ne sont pas disponibles, les heuristiques regex existantes prennent automatiquement le relais.
 7. Le frontend affiche les suggestions et le texte OCR brut pour debug.
 8. L'utilisateur copie les suggestions souhaitées, corrige si besoin, puis valide.
 9. Les champs validés et le résultat OCR brut sont conservés en base, et les champs principaux de la facture sont synchronisés dans les métadonnées de l’objet MinIO.
@@ -110,6 +111,16 @@ Docker Compose démarre également Metabase sur http://localhost:3001. Le servic
 
 Keycloak utilise le thème `provider-followup` monté depuis `keycloak/themes`. La page de connexion affiche uniquement le nom de l’application, le champ utilisateur, le champ mot de passe et un bouton de connexion, avec un fond cohérent avec l’interface Provider Follow-up.
 
-## OCR OCR.space
+## OCR OCR.space et interprétation IA locale
 
 L’OCR principal utilise OCR.space via `https://api.ocr.space/parse/image`. La clé API est fournie au conteneur avec `OCR_SPACE_API_KEY`; les langues configurées par défaut sont `fre,eng` et le moteur OCR.space `2`. Tesseract reste disponible comme fallback local si OCR.space ne renvoie aucun texte.
+
+Après extraction du texte brut, le service OCR peut utiliser Ollama en local pour mieux interpréter le fournisseur, le numéro de facture, la date, les montants et la devise. Cette couche IA est configurée par `OCR_AI_ENABLED`, `OCR_AI_PROVIDER`, `OCR_AI_URL`, `OCR_AI_MODEL` et `OCR_AI_TIMEOUT`. Par défaut, Docker Compose pointe vers le service `ollama` avec le modèle `llama3.2:3b`.
+
+Pour activer réellement l’interprétation IA après le premier démarrage, télécharger le modèle localement :
+
+```bash
+docker exec -it providerfollowup-ollama-1 ollama pull llama3.2:3b
+```
+
+Si le modèle n’est pas encore téléchargé, si Ollama est indisponible ou si la réponse IA n’est pas un JSON valide, l’application continue de fonctionner avec les heuristiques regex déterministes. Cette amélioration ne dépend donc d’aucun service IA cloud payant.

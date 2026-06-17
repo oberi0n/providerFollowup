@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 from datetime import datetime
@@ -26,6 +27,12 @@ OCR_SPACE_LANGUAGES = [lang.strip() for lang in os.getenv("OCR_SPACE_LANGUAGES",
 OCR_SPACE_ENGINE = os.getenv("OCR_SPACE_ENGINE", "2")
 TESSERACT_LANGS = os.getenv("TESSERACT_LANGS", "fra+eng")
 TESSERACT_CONFIG = "--oem 3 --psm 4 -c preserve_interword_spaces=1"
+OCR_AI_ENABLED = os.getenv("OCR_AI_ENABLED", "true").lower() == "true"
+OCR_AI_PROVIDER = os.getenv("OCR_AI_PROVIDER", "ollama").lower()
+OCR_AI_URL = os.getenv("OCR_AI_URL", "http://localhost:11434/api/generate")
+OCR_AI_MODEL = os.getenv("OCR_AI_MODEL", "llama3.2:3b")
+OCR_AI_TIMEOUT = int(os.getenv("OCR_AI_TIMEOUT", "12"))
+OCR_AI_MAX_CHARS = int(os.getenv("OCR_AI_MAX_CHARS", "12000"))
 
 minio_client = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=MINIO_SECURE)
 
@@ -57,6 +64,9 @@ def health():
         "ocrSpaceLanguages": OCR_SPACE_LANGUAGES,
         "fallback": "tesseract-local",
         "apiKeyConfigured": bool(OCR_SPACE_API_KEY),
+        "aiInterpretationEnabled": OCR_AI_ENABLED,
+        "aiProvider": OCR_AI_PROVIDER if OCR_AI_ENABLED else None,
+        "aiModel": OCR_AI_MODEL if OCR_AI_ENABLED else None,
     }
 
 @app.post("/ocr/extract", response_model=OcrResponse)
@@ -72,10 +82,121 @@ def extract(request: OcrRequest):
     filename = request.filename or "invoice-file"
     content_type = request.contentType or guess_content_type(filename, data)
     raw_text = extract_text(data, filename, content_type)
-    suggestions = parse_suggestions(raw_text)
+    suggestions = interpret_suggestions(raw_text)
     filled = sum(1 for value in suggestions.model_dump().values() if value not in (None, ""))
     confidence = "HIGH" if filled >= 5 else "MEDIUM" if filled >= 3 else "LOW"
     return OcrResponse(rawText=raw_text, suggestions=suggestions, confidence=confidence)
+
+
+def interpret_suggestions(text: str) -> Suggestions:
+    regex_suggestions = parse_suggestions(text)
+    if not OCR_AI_ENABLED or OCR_AI_PROVIDER != "ollama" or not text.strip():
+        return regex_suggestions
+
+    ai_suggestions = interpret_with_ollama(text, regex_suggestions)
+    if ai_suggestions is None:
+        return regex_suggestions
+    return merge_suggestions(ai_suggestions, regex_suggestions)
+
+def interpret_with_ollama(text: str, regex_suggestions: Suggestions) -> Optional[Suggestions]:
+    prompt = build_ai_prompt(text, regex_suggestions)
+    try:
+        response = requests.post(
+            OCR_AI_URL,
+            json={
+                "model": OCR_AI_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0.0},
+            },
+            timeout=OCR_AI_TIMEOUT,
+        )
+        response.raise_for_status()
+        ollama_payload = response.json()
+        return suggestions_from_ai_payload(extract_json_object(ollama_payload.get("response", "")))
+    except Exception:
+        # AI interpretation is an optional improvement layer. OCR must remain usable with deterministic regex parsing.
+        return None
+
+def build_ai_prompt(text: str, regex_suggestions: Suggestions) -> str:
+    return f"""Tu es un parseur de factures fournisseur français/anglais.
+Retourne strictement un objet JSON valide, sans Markdown ni commentaire.
+Utilise uniquement le texte OCR fourni. Si une valeur est incertaine ou absente, mets null.
+Le fournisseur est l'émetteur de la facture, pas le client ni l'adresse de facturation.
+Le numéro de facture doit être l'identifiant de la facture, pas une date, un SIRET, un IBAN ou un numéro client.
+Les dates doivent être au format YYYY-MM-DD. Les montants doivent être des nombres avec un point décimal.
+Champs attendus: supplierName, invoiceNumber, invoiceDate, amountHt, vatAmount, amountTtc, currency.
+
+Indices regex existants, à corriger si le texte OCR indique mieux:
+{json.dumps(regex_suggestions.model_dump(), ensure_ascii=False)}
+
+Texte OCR:
+{text[:OCR_AI_MAX_CHARS]}
+"""
+
+def extract_json_object(value: str) -> dict:
+    start = value.find("{")
+    end = value.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("No JSON object found in AI response")
+    payload = json.loads(value[start:end + 1])
+    if not isinstance(payload, dict):
+        raise ValueError("AI response is not a JSON object")
+    return payload
+
+def suggestions_from_ai_payload(payload: dict) -> Suggestions:
+    return Suggestions(
+        supplierName=normalize_optional_string(payload.get("supplierName")),
+        invoiceNumber=normalize_optional_string(payload.get("invoiceNumber")),
+        invoiceDate=normalize_ai_date(payload.get("invoiceDate")),
+        amountHt=coerce_amount(payload.get("amountHt")),
+        vatAmount=coerce_amount(payload.get("vatAmount")),
+        amountTtc=coerce_amount(payload.get("amountTtc")),
+        currency=normalize_currency(payload.get("currency")),
+    )
+
+def merge_suggestions(ai_suggestions: Suggestions, fallback: Suggestions) -> Suggestions:
+    ai = ai_suggestions.model_dump()
+    regex = fallback.model_dump()
+    merged = {}
+    for key, regex_value in regex.items():
+        ai_value = ai.get(key)
+        merged[key] = ai_value if ai_value not in (None, "") else regex_value
+    if not merged.get("currency"):
+        merged["currency"] = "EUR"
+    return Suggestions(**merged)
+
+def normalize_optional_string(value) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = str(value).strip().strip('"\'`')
+    return cleaned[:120] if cleaned else None
+
+def normalize_ai_date(value) -> Optional[str]:
+    value = normalize_optional_string(value)
+    if not value:
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return value
+    return parse_date(value)
+
+def coerce_amount(value) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return parse_amount_string(str(value))
+
+def normalize_currency(value) -> Optional[str]:
+    value = normalize_optional_string(value)
+    if not value:
+        return "EUR"
+    upper = value.upper()
+    if upper in {"€", "EURO", "EUROS"}:
+        return "EUR"
+    return upper[:3]
+
 
 def extract_text(data: bytes, filename: str, content_type: str) -> str:
     ocr_space_text = extract_text_with_ocr_space(data, filename, content_type)
