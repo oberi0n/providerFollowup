@@ -111,7 +111,7 @@ services:
     depends_on:
       ollama:
         condition: service_started
-    entrypoint: ["/bin/sh", "/load-model.sh"]
+    entrypoint: ["/bin/sh", "-c", "tr -d \"\\r\" < /load-model.sh > /tmp/load-model.sh && /bin/sh /tmp/load-model.sh"]
     restart: "no"
 
   backend:
@@ -186,7 +186,7 @@ services:
       APP_DB_PASSWORD: provider
     volumes:
       - ./metabase/setup.sh:/setup.sh:ro
-    entrypoint: ["/bin/sh", "/setup.sh"]
+    entrypoint: ["/bin/sh", "-c", "tr -d \"\\r\" < /setup.sh > /tmp/setup.sh && /bin/sh /tmp/setup.sh"]
     restart: "no"
 
 volumes:
