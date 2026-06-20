@@ -192,6 +192,11 @@ function App() {
     ['CAPEX restant', dashboard.capexAvailable],
     ['Engagé non payé', dashboard.committedUnpaid],
   ] : [], [dashboard])
+  const budgetEvolutionCharts = useMemo(() => dashboard ? [
+    { title: 'Budget global', budget: dashboard.annualBudget, series: buildBudgetEvolution(invoicesForYear) },
+    { title: 'Budget CAPEX', budget: dashboard.capexBudget, series: buildBudgetEvolution(invoicesForYear, 'CAPEX') },
+    { title: 'Budget OPEX', budget: dashboard.opexBudget, series: buildBudgetEvolution(invoicesForYear, 'OPEX') },
+  ] : [], [dashboard, invoicesForYear])
 
   if (!authReady) {
     return <main className="mx-auto max-w-3xl p-6"><div className="rounded-xl bg-white p-6 shadow">Connexion à Keycloak en cours…</div></main>
@@ -272,6 +277,16 @@ function App() {
       {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-white p-4 shadow"><p className="text-sm text-slate-500">{label}</p><p className="text-2xl font-bold">{money(value)}</p></div>)}
     </section>
 
+    {dashboard && <section className="rounded-xl bg-white p-4 shadow">
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold">Évolution et prévision budgétaire</h2>
+        <p className="text-sm text-slate-500">Courbe pleine : consommé réel sur factures enregistrées. Courbe pointillée : prévision des mois suivants selon la moyenne mensuelle observée.</p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {budgetEvolutionCharts.map(chart => <BudgetEvolutionChart key={chart.title} {...chart}/>)}
+      </div>
+    </section>}
+
     {dashboard && <section className="grid grid-cols-1 gap-4 md:grid-cols-2"><Chart title="Par mois" data={dashboard.expensesByMonth} moneyValues/><Chart title="Par fournisseur" data={dashboard.expensesBySupplier} moneyValues/></section>}
 
     <section className="overflow-hidden rounded-xl bg-white shadow">
@@ -318,6 +333,75 @@ function OcrPanel({ result, applySuggestion }) {
       <h3 className="mb-2 font-semibold text-white">Texte OCR brut (debug)</h3>
       <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">{result.rawText}</pre>
     </div>
+  </div>
+}
+
+
+const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
+
+function buildBudgetEvolution(invoices, budgetType = null) {
+  const monthly = Array(12).fill(0)
+  for (const invoice of invoices || []) {
+    if (!invoice.invoiceDate || !invoice.amountTtc) continue
+    if (budgetType && invoice.budgetType !== budgetType) continue
+    const month = new Date(invoice.invoiceDate).getMonth()
+    if (month >= 0 && month < 12) monthly[month] += Number(invoice.amountTtc || 0)
+  }
+  const lastActualMonth = monthly.reduce((last, value, index) => value > 0 ? index : last, -1)
+  const cumulative = []
+  monthly.reduce((sum, value, index) => {
+    cumulative[index] = sum + value
+    return cumulative[index]
+  }, 0)
+  if (lastActualMonth === -1) {
+    return monthLabels.map(month => ({ month, actual: 0, forecast: 0, isForecast: true }))
+  }
+  const averageMonthly = cumulative[lastActualMonth] / (lastActualMonth + 1)
+  return monthLabels.map((month, index) => {
+    if (index <= lastActualMonth) {
+      return { month, actual: cumulative[index], forecast: null, isForecast: false }
+    }
+    return { month, actual: null, forecast: cumulative[lastActualMonth] + averageMonthly * (index - lastActualMonth), isForecast: true }
+  })
+}
+
+function BudgetEvolutionChart({ title, budget, series }) {
+  const width = 520
+  const height = 220
+  const padding = { top: 18, right: 16, bottom: 34, left: 46 }
+  const values = (series || []).flatMap(point => [point.actual, point.forecast]).filter(value => value !== null && value !== undefined)
+  const budgetValue = Number(budget || 0)
+  const maxValue = Math.max(1, budgetValue, ...values) * 1.12
+  const x = index => padding.left + (index * (width - padding.left - padding.right) / 11)
+  const y = value => padding.top + (height - padding.top - padding.bottom) * (1 - Number(value || 0) / maxValue)
+  const pointsFor = key => (series || []).map((point, index) => point[key] === null || point[key] === undefined ? null : `${x(index)},${y(point[key])}`).filter(Boolean).join(' ')
+  const actualPoints = pointsFor('actual')
+  const firstForecastIndex = (series || []).findIndex(point => point.forecast !== null && point.forecast !== undefined)
+  const forecastPoints = firstForecastIndex === -1 ? '' : [
+    firstForecastIndex > 0 && series[firstForecastIndex - 1].actual !== null ? `${x(firstForecastIndex - 1)},${y(series[firstForecastIndex - 1].actual)}` : null,
+    ...series.slice(firstForecastIndex).map((point, offset) => `${x(firstForecastIndex + offset)},${y(point.forecast)}`),
+  ].filter(Boolean).join(' ')
+  const lastReal = [...(series || [])].reverse().find(point => point.actual !== null && point.actual !== undefined)?.actual || 0
+  const yearEndForecast = (series || [])[11]?.forecast ?? (series || [])[11]?.actual ?? 0
+
+  return <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="mb-2 flex items-start justify-between gap-3">
+      <div><h3 className="font-semibold text-slate-900">{title}</h3><p className="text-xs text-slate-500">Budget: {money(budgetValue)}</p></div>
+      <div className="text-right text-xs"><p><span className="font-semibold text-blue-700">Réel</span> {money(lastReal)}</p><p><span className="font-semibold text-amber-700">Prévu déc.</span> {money(yearEndForecast)}</p></div>
+    </div>
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full overflow-visible" role="img" aria-label={`${title}: réel et prévision`}>
+      <line x1={padding.left} y1={y(0)} x2={width - padding.right} y2={y(0)} stroke="#cbd5e1" strokeWidth="1"/>
+      <line x1={padding.left} y1={y(budgetValue)} x2={width - padding.right} y2={y(budgetValue)} stroke="#64748b" strokeDasharray="5 5" strokeWidth="1.5"/>
+      <text x={padding.left} y={Math.max(12, y(budgetValue) - 5)} fill="#64748b" fontSize="11">Budget</text>
+      {actualPoints && <polyline points={actualPoints} fill="none" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>}
+      {forecastPoints && <polyline points={forecastPoints} fill="none" stroke="#d97706" strokeWidth="4" strokeDasharray="8 7" strokeLinecap="round" strokeLinejoin="round"/>}
+      {(series || []).map((point, index) => <g key={point.month}>
+        {(index === 0 || index === 5 || index === 11) && <text x={x(index)} y={height - 10} textAnchor="middle" fill="#64748b" fontSize="11">{point.month}</text>}
+        {point.actual !== null && point.actual !== undefined && <circle cx={x(index)} cy={y(point.actual)} r="4" fill="#2563eb"/>}
+        {point.forecast !== null && point.forecast !== undefined && <circle cx={x(index)} cy={y(point.forecast)} r="4" fill="#d97706"/>}
+      </g>)}
+    </svg>
+    <div className="mt-1 flex gap-4 text-xs text-slate-600"><span><b className="text-blue-700">━</b> Consommé réel</span><span><b className="text-amber-700">┅</b> Prévision</span></div>
   </div>
 }
 

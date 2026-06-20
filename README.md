@@ -96,7 +96,7 @@ Aucune facture de test n’est créée par défaut. Le fichier `backend/src/main
 
 ## Année budgétaire
 
-Le dashboard permet de choisir une année budgétaire et de paramétrer deux lignes de budget annuelles : `OPEX` et `CAPEX`. L’API `GET /api/dashboard?year=YYYY&opexBudget=80000&capexBudget=40000` filtre les factures par date de facture sur l’année choisie, puis calcule la synthèse globale `CAPEX + OPEX`, les consommés/restants par ligne et les ventilations mensuelles/fournisseur/catégorie/type de budget.
+Le dashboard permet de choisir une année budgétaire et de paramétrer deux lignes de budget annuelles : `OPEX` et `CAPEX`. L’API `GET /api/dashboard?year=YYYY&opexBudget=80000&capexBudget=40000` filtre les factures par date de facture sur l’année choisie, puis calcule la synthèse globale `CAPEX + OPEX`, les consommés/restants par ligne et les ventilations mensuelles/fournisseur/catégorie/type de budget. Le frontend ajoute trois graphiques de suivi budgétaire (global, CAPEX et OPEX) avec une courbe réelle basée sur les factures enregistrées et une courbe de prévision pointillée pour les mois restants, calculée à partir de la moyenne mensuelle observée.
 
 Chaque facture validée doit obligatoirement avoir un fournisseur, une date de facture, un montant TTC et une affectation `OPEX` ou `CAPEX`. Le mode brouillon utilisé pendant l’OCR reste autorisé afin de pouvoir préremplir ces champs avant validation manuelle.
 
