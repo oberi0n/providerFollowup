@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Keycloak from 'keycloak-js'
-import { BarChart3, Calendar, Database, FileText, Trash2, Upload, Wand2 } from 'lucide-react'
+import { Calendar, Database, FileText, Trash2, Upload, Wand2 } from 'lucide-react'
 import './index.css'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 const MINIO_CONSOLE_URL = import.meta.env.VITE_MINIO_CONSOLE_URL || 'http://localhost:9001'
-const METABASE_URL = import.meta.env.VITE_METABASE_URL || 'http://localhost:3001'
 const keycloak = new Keycloak({
   url: import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8081',
   realm: import.meta.env.VITE_KEYCLOAK_REALM || 'provider-followup',
@@ -207,7 +206,6 @@ function App() {
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <nav className="flex w-fit flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-sm">
           <a href={MINIO_CONSOLE_URL} target="_blank" rel="noreferrer" className="rounded-xl px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-white hover:shadow-sm"><Database className="inline" size={16}/> MinIO</a>
-          <a href={METABASE_URL} target="_blank" rel="noreferrer" className="rounded-xl px-4 py-2 text-sm font-bold text-purple-700 transition hover:bg-white hover:shadow-sm"><BarChart3 className="inline" size={16}/> Metabase</a>
         </nav>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-700">Connecté : {userProfile?.username || userProfile?.email || 'admin'}</span>
@@ -344,7 +342,7 @@ function buildBudgetEvolution(invoices, budgetType = null) {
   for (const invoice of invoices || []) {
     if (!invoice.invoiceDate || !invoice.amountTtc) continue
     if (budgetType && invoice.budgetType !== budgetType) continue
-    const month = new Date(invoice.invoiceDate).getMonth()
+    const month = Number(String(invoice.invoiceDate).slice(5, 7)) - 1
     if (month >= 0 && month < 12) monthly[month] += Number(invoice.amountTtc || 0)
   }
   const lastActualMonth = monthly.reduce((last, value, index) => value > 0 ? index : last, -1)
@@ -371,10 +369,12 @@ function BudgetEvolutionChart({ title, budget, series }) {
   const padding = { top: 18, right: 16, bottom: 34, left: 46 }
   const values = (series || []).flatMap(point => [point.actual, point.forecast]).filter(value => value !== null && value !== undefined)
   const budgetValue = Number(budget || 0)
-  const maxValue = Math.max(1, budgetValue, ...values) * 1.12
+  const maxValue = Math.max(1, ...values) * 1.25
   const x = index => padding.left + (index * (width - padding.left - padding.right) / 11)
   const y = value => padding.top + (height - padding.top - padding.bottom) * (1 - Number(value || 0) / maxValue)
   const pointsFor = key => (series || []).map((point, index) => point[key] === null || point[key] === undefined ? null : `${x(index)},${y(point[key])}`).filter(Boolean).join(' ')
+  const budgetLineY = budgetValue <= maxValue ? y(budgetValue) : padding.top + 6
+  const budgetLabel = budgetValue <= maxValue ? 'Budget' : 'Budget hors échelle'
   const actualPoints = pointsFor('actual')
   const firstForecastIndex = (series || []).findIndex(point => point.forecast !== null && point.forecast !== undefined)
   const forecastPoints = firstForecastIndex === -1 ? '' : [
@@ -391,8 +391,8 @@ function BudgetEvolutionChart({ title, budget, series }) {
     </div>
     <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full overflow-visible" role="img" aria-label={`${title}: réel et prévision`}>
       <line x1={padding.left} y1={y(0)} x2={width - padding.right} y2={y(0)} stroke="#cbd5e1" strokeWidth="1"/>
-      <line x1={padding.left} y1={y(budgetValue)} x2={width - padding.right} y2={y(budgetValue)} stroke="#64748b" strokeDasharray="5 5" strokeWidth="1.5"/>
-      <text x={padding.left} y={Math.max(12, y(budgetValue) - 5)} fill="#64748b" fontSize="11">Budget</text>
+      <line x1={padding.left} y1={budgetLineY} x2={width - padding.right} y2={budgetLineY} stroke="#64748b" strokeDasharray="5 5" strokeWidth="1.5"/>
+      <text x={padding.left} y={Math.max(12, budgetLineY - 5)} fill="#64748b" fontSize="11">{budgetLabel}</text>
       {actualPoints && <polyline points={actualPoints} fill="none" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>}
       {forecastPoints && <polyline points={forecastPoints} fill="none" stroke="#d97706" strokeWidth="4" strokeDasharray="8 7" strokeLinecap="round" strokeLinejoin="round"/>}
       {(series || []).map((point, index) => <g key={point.month}>

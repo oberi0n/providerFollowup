@@ -24,7 +24,6 @@ Puis ouvrir :
 - Keycloak : http://localhost:8081 (`admin` / `admin`)
 - OCR healthcheck : http://localhost:8000/health
 - Ollama local : http://localhost:11434 (modèle léger `qwen2.5:0.5b` chargé automatiquement au démarrage)
-- Metabase : http://localhost:3001 (`admin@providerfollowup.local` / `ProviderFollowup!2026`)
 - Console MinIO : http://localhost:9001 (bouton Keycloak, `admin` / `admin`; compte technique root `minioadmin` / `minioadmin`)
 
 ## Authentification Keycloak
@@ -32,11 +31,10 @@ Puis ouvrir :
 Docker Compose démarre un serveur Keycloak local et importe automatiquement le realm `provider-followup` depuis `keycloak/provider-followup-realm.json`. Un utilisateur de démonstration unique est créé pour le frontend, l’API backend et la console MinIO : `admin` / `admin`.
 
 - Le frontend React utilise le client public `provider-followup-frontend`, force la connexion Keycloak au chargement, puis envoie le token Bearer à chaque appel API.
-- Le frontend affiche un menu d’accès rapide avec liens vers MinIO (http://localhost:9001) et Metabase (http://localhost:3001).
+- Le frontend affiche un menu d’accès rapide vers MinIO (http://localhost:9001).
 - Le backend Quarkus protège les routes `/api/*` avec OIDC via le client confidentiel `provider-followup-backend`.
 - MinIO expose le bouton de connexion OpenID “Keycloak” et lit le claim `policy=consoleAdmin` émis pour l’utilisateur `admin`.
 - Keycloak publie `http://localhost:8081` comme URL frontend et garde un backchannel dynamique pour les appels internes Docker ; le bouton Keycloak de MinIO redirige donc le navigateur vers `localhost:8081` au lieu du nom de service Docker `keycloak:8080`.
-- Metabase Community Edition ne fournit pas de SSO Keycloak OpenID Connect natif sans extension/édition payante ; il conserve donc son compte local auto-configuré indiqué ci-dessus.
 
 ## Workflow OCR
 
@@ -96,17 +94,18 @@ Aucune facture de test n’est créée par défaut. Le fichier `backend/src/main
 
 ## Année budgétaire
 
-Le dashboard permet de choisir une année budgétaire et de paramétrer deux lignes de budget annuelles : `OPEX` et `CAPEX`. L’API `GET /api/dashboard?year=YYYY&opexBudget=80000&capexBudget=40000` filtre les factures par date de facture sur l’année choisie, puis calcule la synthèse globale `CAPEX + OPEX`, les consommés/restants par ligne et les ventilations mensuelles/fournisseur/catégorie/type de budget. Le frontend ajoute trois graphiques de suivi budgétaire (global, CAPEX et OPEX) avec une courbe réelle basée sur les factures enregistrées et une courbe de prévision pointillée pour les mois restants, calculée à partir de la moyenne mensuelle observée.
+Le dashboard permet de choisir une année budgétaire et de paramétrer deux lignes de budget annuelles : `OPEX` et `CAPEX`. L’API `GET /api/dashboard?year=YYYY&opexBudget=80000&capexBudget=40000` filtre les factures par date de facture sur l’année choisie, puis calcule la synthèse globale `CAPEX + OPEX`, les consommés/restants par ligne et les ventilations mensuelles/fournisseur/catégorie/type de budget. Le frontend ajoute trois graphiques de suivi budgétaire (global, CAPEX et OPEX) avec une courbe réelle basée sur les factures enregistrées et une courbe de prévision pointillée pour les mois restants, calculée à partir de la moyenne mensuelle observée. Les graphiques utilisent une échelle basée sur le consommé/prévu pour éviter que les petites dépenses restent collées à zéro lorsque le budget annuel est beaucoup plus élevé.
 
 Chaque facture validée doit obligatoirement avoir un fournisseur, une date de facture, un montant TTC et une affectation `OPEX` ou `CAPEX`. Le mode brouillon utilisé pendant l’OCR reste autorisé afin de pouvoir préremplir ces champs avant validation manuelle.
+
+
+## Persistance des données
+
+Les factures sont conservées au redémarrage des conteneurs grâce au volume Docker `postgres-data`. Le backend utilise `quarkus.hibernate-orm.database.generation=update` afin de mettre à jour le schéma sans supprimer les tables existantes. Les fichiers restent conservés dans le volume `minio-data`. Attention : `docker compose down -v` supprime volontairement ces volumes et donc les données.
 
 ## Organisation MinIO
 
 Les fichiers ne sont pas rangés par identifiant séquentiel de facture. Chaque upload utilise une clé objet du type `invoices/YYYY/MM/<uuid>-<nom-fichier>`, ce qui regroupe les factures par année et mois tout en évitant les collisions de noms. Si la date de facture est connue au moment de l’upload, elle détermine immédiatement `YYYY/MM`. Si la date est détectée par OCR, le backend l’applique uniquement quand la facture n’avait pas encore de date, puis déplace immédiatement l’objet MinIO vers le mois correspondant. Si l’utilisateur corrige ensuite la date lors de la validation, le backend déplace à nouveau l’objet vers le mois corrigé. À chaque upload, OCR ou enregistrement, les informations validées du formulaire (`supplierName`, `invoiceNumber`, `invoiceDate`, montants, type de budget, devise et commentaire) sont aussi réécrites dans les métadonnées MinIO de l’objet pour faciliter l’inspection côté stockage.
-
-## Metabase
-
-Docker Compose démarre également Metabase sur http://localhost:3001. Le service `metabase-setup` initialise un compte admin local (`admin@providerfollowup.local` / `ProviderFollowup!2026`), connecte la base PostgreSQL `providerfollowup` et crée un dashboard avec cartes SQL : total TTC par mois, dépenses par fournisseur, factures récentes, total annuel et un diagramme de progression cumulée par année budgétaire sur les 12 mois de janvier à décembre.
 
 ## Thème de connexion
 

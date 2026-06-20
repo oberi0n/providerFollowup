@@ -151,47 +151,13 @@ services:
         VITE_KEYCLOAK_REALM: provider-followup
         VITE_KEYCLOAK_CLIENT_ID: provider-followup-frontend
         VITE_MINIO_CONSOLE_URL: http://localhost:9001
-        VITE_METABASE_URL: http://localhost:3001
     depends_on:
       - backend
     ports:
       - "3000:80"
 
-  metabase:
-    image: metabase/metabase:v0.50.31
-    environment:
-      MB_JETTY_PORT: 3000
-      MB_DB_FILE: /metabase-data/metabase.db
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "3001:3000"
-    volumes:
-      - metabase-data:/metabase-data
-
-  metabase-setup:
-    image: curlimages/curl:8.10.1
-    depends_on:
-      - metabase
-      - postgres
-    environment:
-      METABASE_URL: http://metabase:3000
-      MB_ADMIN_EMAIL: admin@providerfollowup.local
-      MB_ADMIN_PASSWORD: ProviderFollowup!2026
-      APP_DB_HOST: postgres
-      APP_DB_PORT: 5432
-      APP_DB_NAME: providerfollowup
-      APP_DB_USER: provider
-      APP_DB_PASSWORD: provider
-    volumes:
-      - ./metabase/setup.sh:/setup.sh:ro
-    entrypoint: ["/bin/sh", "-c", "tr -d \"\\r\" < /setup.sh > /tmp/setup.sh && /bin/sh /tmp/setup.sh"]
-    restart: "no"
-
 volumes:
   postgres-data:
   minio-data:
-  metabase-data:
   keycloak-data:
   ollama-data:
