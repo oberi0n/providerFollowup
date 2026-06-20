@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Keycloak from 'keycloak-js'
-import { BarChart3, Calendar, Database, FileText, Upload, Wand2 } from 'lucide-react'
+import { BarChart3, Calendar, Database, FileText, Trash2, Upload, Wand2 } from 'lucide-react'
 import './index.css'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -30,6 +30,7 @@ function App() {
   const [invoices, setInvoices] = useState([])
   const [dashboard, setDashboard] = useState(null)
   const [selected, setSelected] = useState(null)
+  const [draftInvoiceId, setDraftInvoiceId] = useState(null)
   const [form, setForm] = useState(emptyInvoice)
   const [file, setFile] = useState(null)
   const [ocrResult, setOcrResult] = useState(null)
@@ -81,6 +82,7 @@ function App() {
 
   function resetWorkflow(successMessage = '') {
     setSelected(null)
+    setDraftInvoiceId(null)
     setForm(emptyInvoice)
     setFile(null)
     setOcrResult(null)
@@ -89,6 +91,7 @@ function App() {
 
   function selectInvoice(invoice) {
     setSelected(invoice)
+    setDraftInvoiceId(null)
     const { category, status, ...editableInvoice } = invoice
     setForm({ ...emptyInvoice, ...editableInvoice, invoiceDate: invoice.invoiceDate || '' })
     setOcrResult(invoice.ocrRawText ? { rawText: invoice.ocrRawText, suggestions: JSON.parse(invoice.ocrSuggestionsJson || '{}') } : null)
@@ -112,6 +115,7 @@ function App() {
     event.preventDefault()
     try {
       await persistInvoice()
+      setDraftInvoiceId(null)
       resetWorkflow('Facture enregistrée. Vous pouvez démarrer une nouvelle facture ou lancer un nouvel OCR.')
       await refresh()
     } catch (error) {
@@ -126,6 +130,7 @@ function App() {
     try {
       const invoice = await persistInvoice(form, selected?.id, true)
       setSelected(invoice)
+      setDraftInvoiceId(invoice.id)
       const body = new FormData()
       body.append('file', file)
 
@@ -148,6 +153,30 @@ function App() {
     } finally {
       setLoadingOcr(false)
     }
+  }
+
+
+  async function abandonCurrentDraft() {
+    if (!draftInvoiceId || selected?.id !== draftInvoiceId) {
+      resetWorkflow('Saisie abandonnée. Aucun fichier temporaire à supprimer.')
+      return
+    }
+    try {
+      const res = await authFetch(`${API}/api/invoices/${draftInvoiceId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(await res.text())
+      resetWorkflow('Saisie abandonnée : la facture brouillon et son fichier MinIO ont été supprimés.')
+      await refresh()
+    } catch (error) {
+      setMessage(`Erreur abandon de saisie : ${error.message}`)
+    }
+  }
+
+  async function startNewInvoice() {
+    if (draftInvoiceId && selected?.id === draftInvoiceId) {
+      await abandonCurrentDraft()
+      return
+    }
+    resetWorkflow('Nouvelle facture prête.')
   }
 
   function applySuggestion(key, value) {
@@ -177,7 +206,7 @@ function App() {
         </nav>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-700">Connecté : {userProfile?.username || userProfile?.email || 'admin'}</span>
-          <button onClick={() => resetWorkflow('Nouvelle facture prête.')} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Nouvelle facture</button>
+          <button onClick={startNewInvoice} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Nouvelle facture</button>
           <button onClick={() => keycloak.logout({ redirectUri: window.location.origin })} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Déconnexion</button>
         </div>
       </div>
@@ -205,7 +234,7 @@ function App() {
         </div>
         <p className="mb-4 text-sm text-slate-600">2. Les champs fournisseur, date, montant TTC et CAPEX/OPEX sont obligatoires avant validation.</p>
         <InvoiceFields form={form} setForm={setForm}/>
-        <div className="mt-4 flex gap-3"><button className="rounded bg-emerald-600 px-4 py-2 text-white">Valider / enregistrer</button></div>
+        <div className="mt-4 flex flex-wrap gap-3"><button className="rounded bg-emerald-600 px-4 py-2 text-white">Valider / enregistrer</button>{draftInvoiceId && selected?.id === draftInvoiceId && <button type="button" onClick={abandonCurrentDraft} className="rounded border border-red-200 bg-red-50 px-4 py-2 font-semibold text-red-700"><Trash2 className="inline" size={16}/> Abandonner et supprimer le fichier</button>}</div>
       </form>
     </section>
 

@@ -48,7 +48,7 @@ Docker Compose démarre un serveur Keycloak local et importe automatiquement le 
 6. Une couche d’interprétation IA locale via Ollama analyse le texte OCR brut et renvoie les champs structurés ; si Ollama ou le modèle ne sont pas disponibles, les heuristiques regex existantes prennent automatiquement le relais.
 7. Le frontend affiche les suggestions et le texte OCR brut pour debug.
 8. L'utilisateur copie les suggestions souhaitées, corrige si besoin, puis valide.
-9. Les champs validés et le résultat OCR brut sont conservés en base, et les champs principaux de la facture sont synchronisés dans les métadonnées de l’objet MinIO.
+9. Les champs validés et le résultat OCR brut sont conservés en base, et les champs principaux de la facture sont synchronisés dans les métadonnées de l’objet MinIO. Si l’utilisateur abandonne la saisie OCR avant validation, le frontend appelle `DELETE /api/invoices/{id}` pour supprimer la facture brouillon et son objet MinIO.
 
 > Important : l'OCR ne remplace jamais automatiquement les champs validés d'une facture. Les suggestions sont stockées séparément dans `ocrSuggestionsJson`.
 
@@ -64,6 +64,7 @@ L'écran principal est organisé dans l'ordre d'usage : sélection du fichier et
 - `POST /api/invoices/{id}/upload`
 - `POST /api/invoices/{id}/ocr`
 - `GET /api/invoices/{id}/ocr-result`
+- `DELETE /api/invoices/{id}`
 - `GET /api/dashboard`
 - Interne OCR : `POST /ocr/extract`
 

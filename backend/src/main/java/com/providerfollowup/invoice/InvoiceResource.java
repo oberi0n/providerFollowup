@@ -92,6 +92,16 @@ public class InvoiceResource {
         return toOcrResponse(invoice, result.confidence());
     }
 
+    @DELETE
+    @Path("/{id}")
+    @Transactional
+    public Response delete(@PathParam("id") Long id) throws Exception {
+        Invoice invoice = findInvoice(id);
+        storageService.deleteObject(invoice.fileObjectKey);
+        invoice.delete();
+        return Response.noContent().build();
+    }
+
     @GET
     @Path("/{id}/ocr-result")
     public OcrResultResponse getOcrResult(@PathParam("id") Long id) throws Exception {

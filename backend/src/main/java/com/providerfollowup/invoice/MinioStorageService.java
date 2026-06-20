@@ -38,6 +38,14 @@ public class MinioStorageService {
         return objectKey;
     }
 
+    public void deleteObject(String objectKey) throws Exception {
+        if (objectKey == null || objectKey.isBlank()) {
+            return;
+        }
+        ensureBucket();
+        minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());
+    }
+
     public String syncObjectWithInvoice(String currentObjectKey, Invoice invoice) throws Exception {
         if (currentObjectKey == null || invoice == null) {
             return currentObjectKey;
