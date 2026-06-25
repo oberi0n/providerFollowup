@@ -132,7 +132,7 @@ Les versions ci-dessous ont été revues le 25 juin 2026 par rapport aux annonce
 | Keycloak serveur | `quay.io/keycloak/keycloak:26.6.3` | Version serveur Keycloak 26.6.x récente. |
 | Keycloak JS | `keycloak-js@26.2.4` | Dernière version npm publique du client JavaScript Keycloak identifiée lors de la revue. |
 | Quarkus | `3.36.3` | Version Quarkus récente alignée avec le train 3.36. |
-| OkHttp JVM | `com.squareup.okhttp3:okhttp-jvm:5.4.0` | Dépendance JVM explicite requise par le SDK MinIO Java `9.0.3` pour compiler `MinioClient.builder().endpoint(...)` avec la classe `okhttp3.HttpUrl`. |
+| OkHttp JVM | `com.squareup.okhttp3:okhttp-jvm:5.4.0` | Dépendance JVM explicite requise par le SDK MinIO Java `8.6.0` pour compiler `MinioClient.builder().endpoint(...)` avec la classe `okhttp3.HttpUrl`. |
 | Maven image | `maven:3.9.16-eclipse-temurin-21` | Maven 3.9.16 est la version 3.9 recommandée au moment de la revue. |
 | Java runtime | `eclipse-temurin:21.0.11_10-jre` | Dernier runtime Temurin 21 disponible identifié lors de la revue. |
 | Frontend | React `19.2.7`, Vite `8.1.0`, Tailwind CSS `4.3.1`, Lucide `1.21.0` | Dépendances frontend mises à jour vers les versions stables récentes. Tailwind utilise désormais le plugin Vite `@tailwindcss/vite`. |
