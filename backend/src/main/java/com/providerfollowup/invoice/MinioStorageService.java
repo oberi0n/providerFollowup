@@ -2,12 +2,12 @@ package com.providerfollowup.invoice;
 
 import io.minio.BucketExistsArgs;
 import io.minio.CopyObjectArgs;
-import io.minio.CopySource;
 import io.minio.Directive;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.messages.CopySource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -31,7 +31,7 @@ public class MinioStorageService {
         minioClient.putObject(PutObjectArgs.builder()
                 .bucket(bucket)
                 .object(objectKey)
-                .stream(inputStream, size, -1)
+                .stream(inputStream, size, -1L)
                 .contentType(contentType == null ? "application/octet-stream" : contentType)
                 .userMetadata(metadataFor(invoice))
                 .build());
