@@ -120,3 +120,20 @@ Après extraction du texte brut, le service OCR peut utiliser Ollama en local po
 Le service `ollama-model-loader` télécharge automatiquement ce modèle au démarrage avec `ollama pull qwen2.5:0.5b` et `ocr-service` attend la fin de ce chargement avant de démarrer. Le modèle est conservé dans le volume Docker `ollama-data`, donc le téléchargement ne se répète pas à chaque redémarrage.
 
 Le timeout IA est volontairement fixé à 45 secondes, car le premier appel charge le modèle en mémoire et peut être lent sur CPU. Le prompt OCR est limité et le contexte Ollama est réduit pour accélérer l’interprétation. Si Ollama est indisponible, dépasse le timeout ou renvoie une réponse non JSON, l’application continue de fonctionner avec les heuristiques regex déterministes. Cette amélioration ne dépend donc d’aucun service IA cloud payant.
+
+## Versions techniques vérifiées
+
+Les versions ci-dessous ont été revues le 25 juin 2026 par rapport aux annonces et registres publics disponibles. Les images et dépendances sont volontairement épinglées pour obtenir des builds reproductibles tout en restant à jour sur les branches stables utilisées par le projet.
+
+| Composant | Version utilisée | Note |
+| --- | --- | --- |
+| PostgreSQL | `postgres:16.14-alpine` | Dernier correctif disponible sur la branche 16, afin de préserver la compatibilité directe avec le volume existant `postgres-data`. Une montée majeure vers PostgreSQL 18 demande une migration de volume/dump-restore dédiée. |
+| MinIO | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | Dernière image MinIO officielle publiée sur Docker Hub identifiée lors de la revue. |
+| Keycloak serveur | `quay.io/keycloak/keycloak:26.6.3` | Version serveur Keycloak 26.6.x récente. |
+| Keycloak JS | `keycloak-js@26.2.4` | Dernière version npm publique du client JavaScript Keycloak identifiée lors de la revue. |
+| Quarkus | `3.36.3` | Version Quarkus récente alignée avec le train 3.36. |
+| Maven image | `maven:3.9.16-eclipse-temurin-21` | Maven 3.9.16 est la version 3.9 recommandée au moment de la revue. |
+| Java runtime | `eclipse-temurin:21.0.11_9-jre` | Dernier runtime Temurin 21 disponible identifié lors de la revue. |
+| Frontend | React `19.2.7`, Vite `8.1.0`, Tailwind CSS `4.3.1`, Lucide `1.21.0` | Dépendances frontend mises à jour vers les versions stables récentes. Tailwind utilise désormais le plugin Vite `@tailwindcss/vite`. |
+| OCR service | Python `3.13-slim`, FastAPI `0.138.0`, Uvicorn `0.48.0`, Pillow `12.2.0`, MinIO SDK `7.2.20`, Requests `2.34.2`, python-multipart `0.0.32`, Pydantic `2.13.4` | Dépendances OCR mises à jour vers les dernières versions stables identifiées, en conservant `pdf2image==1.17.0` et `pytesseract==0.3.13` déjà à jour. |
+| Ollama | `ollama/ollama:latest` | Conservé sur le tag `latest` car le service sert uniquement à charger et servir le modèle local léger configuré. |
