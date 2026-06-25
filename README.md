@@ -133,7 +133,7 @@ Les versions ci-dessous ont été revues le 25 juin 2026 par rapport aux annonce
 | Keycloak JS | `keycloak-js@26.2.4` | Dernière version npm publique du client JavaScript Keycloak identifiée lors de la revue. |
 | Quarkus | `3.36.3` | Version Quarkus récente alignée avec le train 3.36. |
 | Maven image | `maven:3.9.16-eclipse-temurin-21` | Maven 3.9.16 est la version 3.9 recommandée au moment de la revue. |
-| Java runtime | `eclipse-temurin:21.0.11_9-jre` | Dernier runtime Temurin 21 disponible identifié lors de la revue. |
+| Java runtime | `eclipse-temurin:21.0.11_10-jre` | Dernier runtime Temurin 21 disponible identifié lors de la revue. |
 | Frontend | React `19.2.7`, Vite `8.1.0`, Tailwind CSS `4.3.1`, Lucide `1.21.0` | Dépendances frontend mises à jour vers les versions stables récentes. Tailwind utilise désormais le plugin Vite `@tailwindcss/vite`. |
 | OCR service | Python `3.13-slim`, FastAPI `0.138.0`, Uvicorn `0.48.0`, Pillow `12.2.0`, MinIO SDK `7.2.20`, Requests `2.34.2`, python-multipart `0.0.32`, Pydantic `2.13.4` | Dépendances OCR mises à jour vers les dernières versions stables identifiées, en conservant `pdf2image==1.17.0` et `pytesseract==0.3.13` déjà à jour. |
 | Ollama | `ollama/ollama:latest` | Conservé sur le tag `latest` car le service sert uniquement à charger et servir le modèle local léger configuré. |

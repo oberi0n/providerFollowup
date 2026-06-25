@@ -5,7 +5,7 @@ RUN mvn -B dependency:go-offline
 COPY src ./src
 RUN mvn -B package -DskipTests
 
-FROM eclipse-temurin:21.0.11_9-jre
+FROM eclipse-temurin:21.0.11_10-jre
 WORKDIR /app
 COPY --from=build /app/target/quarkus-app/ ./
 EXPOSE 8080
