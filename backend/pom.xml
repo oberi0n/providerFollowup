@@ -8,6 +8,7 @@
     <compiler-plugin.version>3.14.1</compiler-plugin.version>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <okhttp.version>5.4.0</okhttp.version>
     <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
     <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
     <quarkus.platform.version>3.36.3</quarkus.platform.version>
@@ -32,7 +33,8 @@
     <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-arc</artifactId></dependency>
     <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-oidc</artifactId></dependency>
     <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-rest-client-jackson</artifactId></dependency>
-    <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>8.6.0</version></dependency>
+    <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>9.0.3</version></dependency>
+    <dependency><groupId>com.squareup.okhttp3</groupId><artifactId>okhttp-jvm</artifactId><version>${okhttp.version}</version></dependency>
   </dependencies>
   <build>
     <plugins>
