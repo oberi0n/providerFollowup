@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+body { @apply bg-slate-950 text-slate-100; }
+body::before { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at top left, rgba(59, 130, 246, .18), transparent 32rem), radial-gradient(circle at top right, rgba(168, 85, 247, .14), transparent 28rem); }
+input, select, textarea { color-scheme: dark; }

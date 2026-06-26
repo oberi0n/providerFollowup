@@ -1,0 +1,1 @@
+-- No default invoice seed data: the application starts with an empty invoice list.

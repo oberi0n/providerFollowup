@@ -1,0 +1,74 @@
+{
+  "realm": "provider-followup",
+  "enabled": true,
+  "displayName": "Provider Follow-up",
+  "loginTheme": "provider-followup",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Provider",
+      "lastName": "Admin",
+      "email": "admin@providerfollowup.local",
+      "credentials": [
+        { "type": "password", "value": "admin", "temporary": false }
+      ],
+      "attributes": {
+        "policy": ["consoleAdmin"]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "provider-followup-frontend",
+      "name": "Provider Follow-up Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:5173/*"],
+      "webOrigins": ["http://localhost:3000", "http://localhost:5173"]
+    },
+    {
+      "clientId": "provider-followup-backend",
+      "name": "Provider Follow-up Backend API",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "backend-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "minio",
+      "name": "MinIO Console",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "minio-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:9001/oauth_callback"],
+      "webOrigins": ["http://localhost:9001"],
+      "protocolMappers": [
+        {
+          "name": "minio-policy",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "policy",
+            "claim.name": "policy",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
